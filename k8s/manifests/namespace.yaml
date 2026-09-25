@@ -1,0 +1,6 @@
+# Namespace(名前空間)= クラスタの中の「部屋」です。ラボの物はすべて lab の部屋に入れます。
+# 片付けたいときは kubectl delete namespace lab で部屋ごと消せます。
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab

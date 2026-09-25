@@ -1,0 +1,3 @@
+.vp-doc table { font-size: 0.9rem; }
+.vp-doc td, .vp-doc th { vertical-align: top; }
+.vp-doc h4 { margin-top: 1.5rem; color: var(--vp-c-brand-1); }

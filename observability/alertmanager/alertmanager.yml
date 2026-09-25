@@ -1,0 +1,20 @@
+# Alertmanager の設定です。Prometheus から届いたアラートを「まとめて」「重複を除いて」通知先に送ります。
+# 通知先はラボ内の pager だけです(外部のサービスには送りません)。
+route:
+  receiver: pager
+  group_by: ["alertname", "job"]
+  group_wait: 10s # 最初のアラートが来てから、仲間が来るのを待つ時間
+  group_interval: 30s # 同じまとまりに新しいアラートが加わったとき、次に送るまでの間隔
+  repeat_interval: 1h # 鳴り続けている間、同じ通知を送り直す間隔
+
+receivers:
+  - name: pager
+    webhook_configs:
+      - url: http://pager:9094/webhook
+        send_resolved: true # 直ったときも知らせる
+
+# 緊急(page)が鳴っている間は、同じサービスの警告(ticket)を黙らせます(通知の洪水を防ぐため)。
+inhibit_rules:
+  - source_matchers: ['severity="page"']
+    target_matchers: ['severity="ticket"']
+    equal: ["job"]

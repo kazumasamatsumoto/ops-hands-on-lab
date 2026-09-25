@@ -1,0 +1,88 @@
+# edge(お店の入口。CDN と WAF の代わり)です。軽量版と同じイメージ・同じ nginx 設定を使います。
+#
+# nginx の設定(edge/default.conf.template)と WAF の例外ルールは、k8s/up.sh が ConfigMap「edge-config」に入れます。
+# 本格版で違うのは次の 2 点だけで、up.sh が書き換えてから入れています:
+#   - 名前を調べる先(resolver): Docker の 127.0.0.11 → Kubernetes の DNS(kube-dns、kind では 10.96.0.10)
+#   - 振り分け先の名前: api / web → api.lab.svc.cluster.local / web.lab.svc.cluster.local
+#     (nginx の resolver は「短い名前の補完」をしないため、正式な長い名前で書きます)
+#
+# /admin/ の IP 制限は軽量版の設定のままなので、本格版では edge の外からは必ず 403 になります。
+# スイッチの切り替えは k8s/chaos.sh(api の Pod の中から直接頼む)を使ってください。
+#
+# edge は 1 つだけ動かします(キャッシュとレート制限の帳簿を Pod ごとに持つため、2 つにすると数え方が分かれます)。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: edge
+  labels: { app: edge }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: edge }
+  template:
+    metadata:
+      labels: { app: edge }
+    spec:
+      containers:
+        - name: edge
+          image: owasp/modsecurity-crs:4.25.1-nginx-alpine-202609241109-lts
+          ports:
+            - { name: http, containerPort: 8080 }
+          env:
+            # --- キャッシュ: on で有効、off で無効 ---
+            - { name: EDGE_CACHE, value: "on" }
+            - { name: EDGE_GLOBAL_RATE, value: 20r/s }
+            # --- CSP(軽量版の docker-compose.yml と同じ中身です。変えるときは両方を合わせてください) ---
+            - name: EDGE_CSP
+              value: "default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-VM2mZqyEQZoLzoTrp5EigFvzQ0+f1wSeBuoOn95WHCg=' 'sha256-8sGKvDKC8crv9OBcqEMvqrNDWlm1/80h7NJpJzqOnLI=' 'sha256-AjQQ1QCZ2iCwycbT8XbBx1OIdXf2xxLNb7TySQf3WR4=' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+            # --- WAF(ModSecurity + OWASP CRS) ---
+            - { name: MODSEC_RULE_ENGINE, value: "On" } # On = 遮断する / DetectionOnly = 記録だけ
+            - { name: BLOCKING_PARANOIA, value: "1" }
+            - { name: ANOMALY_INBOUND, value: "5" }
+            - { name: ANOMALY_OUTBOUND, value: "4" }
+            - { name: MODSEC_AUDIT_LOG_FORMAT, value: JSON }
+            - { name: MODSEC_AUDIT_LOG, value: /dev/stdout }
+            - { name: RESOLVERS, value: 10.96.0.10 } # kind の DNS(kube-dns)の番号
+            - { name: BACKEND, value: "http://api.lab.svc.cluster.local:3001" }
+          volumeMounts:
+            - name: edge-config
+              mountPath: /etc/nginx/templates/conf.d/default.conf.template
+              subPath: default.conf.template
+              readOnly: true
+            - name: edge-config
+              mountPath: /opt/owasp-crs/plugins/lab-exclusions-before.conf
+              subPath: lab-exclusions-before.conf
+              readOnly: true
+          # Host に IP アドレスを使うと WAF が「怪しい」と記録するので、名前(localhost)で呼びます。
+          readinessProbe:
+            httpGet:
+              path: /edge-healthz
+              port: http
+              httpHeaders: [{ name: Host, value: localhost }]
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /edge-healthz
+              port: http
+              httpHeaders: [{ name: Host, value: localhost }]
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 128Mi }
+      volumes:
+        - name: edge-config
+          configMap: { name: edge-config }
+---
+# NodePort = ノード(kind のコンテナ)の決まった番号(30080)で外に出す Service です。
+# kind-config.yaml の extraPortMappings で、ホストの 18080 → ノードの 30080 につないでいます。
+apiVersion: v1
+kind: Service
+metadata:
+  name: edge
+  labels: { app: edge }
+spec:
+  type: NodePort
+  selector: { app: edge }
+  ports:
+    - { name: http, port: 8080, targetPort: http, nodePort: 30080 }

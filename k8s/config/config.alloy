@@ -1,0 +1,65 @@
+// 本格版(Kubernetes)の Grafana Alloy の設定です。lab の部屋(Namespace)の Pod のログを読み、Loki へ送ります。
+// 軽量版(observability/alloy/config.alloy)は Docker のソケットから読みましたが、本格版では Kubernetes の API から読みます
+// (kubectl logs と同じ仕組みです)。付けるラベルは軽量版と同じ(project / service / container)にしてあるので、
+// Grafana のダッシュボードのログのパネルはそのまま使えます。
+
+// 1. lab の部屋にいる Pod の一覧を Kubernetes から教えてもらう
+discovery.kubernetes "pods" {
+  role = "pod"
+  namespaces {
+    names = ["lab"]
+  }
+}
+
+// 2. Loki で探しやすいよう、ラベル(付箋)を付ける
+//    service   … Pod の app ラベル(api, web, edge, db など)
+//    pod       … Pod の名前(同じ service でも、どの Pod のログか分かる)
+//    container … コンテナの名前
+discovery.relabel "pods" {
+  targets = discovery.kubernetes.pods.targets
+
+  rule {
+    source_labels = ["__meta_kubernetes_pod_label_app"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_name"]
+    target_label  = "pod"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_pod_container_name"]
+    target_label  = "container"
+  }
+  rule {
+    target_label = "project"
+    replacement  = "lab"
+  }
+}
+
+// 3. 各 Pod のログを Kubernetes の API から読む
+loki.source.kubernetes "pods" {
+  targets    = discovery.relabel.pods.output
+  forward_to = [loki.process.json.receiver]
+}
+
+// 4. JSON のログから「レベル」を取り出してラベルにする(軽量版と同じ)
+loki.process "json" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+  stage.template {
+    source   = "level"
+    template = "{{ if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else if eq .Value \"20\" }}debug{{ else }}{{ .Value }}{{ end }}"
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Loki へ送る
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

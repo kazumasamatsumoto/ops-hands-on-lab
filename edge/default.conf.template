@@ -1,0 +1,145 @@
+# edge(入口)の nginx 設定です。本物の CDN と WAF の代わりをします。
+#
+# このファイルは起動時に envsubst で ${...} の部分が環境変数に置き換わります(docker-compose.yml の edge の environment)。
+# 小文字の $host などは nginx の変数なので置き換わりません。
+#
+# やっていること(上から順に):
+#   1. 振り分け          /api/ と /admin/ → api、それ以外 → web
+#   2. キャッシュ        商品一覧・詳細の HTML と GET /api/products* を 30 秒ためる
+#   3. レート制限        /api/login は 1 秒 1 回(バースト 5)、全体は 1 秒 ${EDGE_GLOBAL_RATE}
+#   4. 管理画面の IP 制限 /admin/ は Docker の内部ネットワークと自分自身からだけ
+#   5. セキュリティヘッダ CSP など
+#   6. WAF              ModSecurity + OWASP CRS(設定はイメージ側。遮断モード)
+
+# ---------- ログ(1 行 1 JSON。Loki で探しやすくするため) ----------
+log_format edge_json escape=json
+  '{"time":"$time_iso8601","service":"edge","remote_addr":"$remote_addr",'
+  '"method":"$request_method","uri":"$request_uri","status":$status,'
+  '"bytes":$body_bytes_sent,"request_time":$request_time,'
+  '"upstream":"$upstream_addr","upstream_status":"$upstream_status",'
+  '"upstream_time":"$upstream_response_time","cache":"$upstream_cache_status",'
+  '"user_agent":"$http_user_agent"}';
+
+# ---------- キャッシュ ----------
+# ためる場所(容量 100MB まで、10 分使われなければ捨てる)。
+proxy_cache_path /tmp/nginx-cache levels=1:2 keys_zone=store_cache:10m max_size=100m inactive=10m use_temp_path=off;
+
+# キャッシュの ON/OFF は環境変数 EDGE_CACHE の 1 か所で切り替えます(on 以外なら OFF)。
+map "${EDGE_CACHE}" $cache_disabled {
+  default 1;
+  on      0;
+}
+
+# ログイン中の人(Authorization か Cookie を持っている)の応答はためません。
+# ためてしまうと、ほかの人に「その人専用の画面」を見せてしまう事故になります。
+map "$http_authorization$http_cookie" $has_credentials {
+  ""      0;
+  default 1;
+}
+
+# ---------- レート制限 ----------
+# 「IP アドレスごとに 1 秒に何回まで」を数える帳簿です。
+limit_req_zone $binary_remote_addr zone=per_ip:10m rate=${EDGE_GLOBAL_RATE};
+limit_req_zone $binary_remote_addr zone=login:10m  rate=1r/s;
+limit_req_status 429;
+limit_req_log_level warn;
+
+server {
+  listen 8080 default_server;
+  server_name _;
+
+  access_log /dev/stdout edge_json;
+
+  # 振り分け先の名前は「リクエストが来たとき」に Docker の DNS(127.0.0.11)で調べます。
+  # 変数に入れておくと、web がまだ起動していなくても nginx は起動できます(その間は 502)。
+  resolver 127.0.0.11 valid=10s ipv6=off;
+  set $api_upstream http://api:3001;
+  set $web_upstream http://web:4000;
+
+  # 全体のレート制限。画面 1 枚で JS や CSS をまとめて取りに来るので、少しの「まとめ買い」(burst)を認めます。
+  limit_req zone=per_ip burst=40 nodelay;
+
+  # ---------- セキュリティヘッダ ----------
+  # add_header は location に 1 つでも書くと、ここの設定が引き継がれなくなるため、location には書きません。
+  add_header Content-Security-Policy "${EDGE_CSP}" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header X-Frame-Options "DENY" always;
+  # キャッシュを使った場所だけ HIT / MISS / BYPASS / EXPIRED が入ります(使っていない場所では付きません)。
+  add_header X-Cache-Status $upstream_cache_status always;
+
+  proxy_http_version 1.1;
+  proxy_set_header Host $host;
+  proxy_set_header Connection "";
+  proxy_set_header X-Real-IP $remote_addr;
+  proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+  proxy_set_header X-Forwarded-Proto $scheme;
+  proxy_set_header X-Request-Id $request_id;
+  proxy_connect_timeout 3s;
+  proxy_read_timeout 30s;
+
+  # キャッシュの共通設定(proxy_cache を書いた location でだけ効きます)。
+  proxy_cache_key "$request_method$host$request_uri";
+  proxy_cache_valid 200 30s;
+  proxy_cache_methods GET HEAD;
+  proxy_cache_bypass $cache_disabled $has_credentials;
+  proxy_no_cache     $cache_disabled $has_credentials;
+  # アプリが Cache-Control: no-store などを付けた応答はためません(例: web が SSR を諦めた「空の HTML」)。
+  # アプリが何も付けていなければ、上の 30 秒でためます。
+  # 同じ物を同時にたくさん頼まれたら、アプリに取りに行くのは 1 回だけにします。
+  proxy_cache_lock on;
+
+  # edge 自身の生存確認(docker compose の healthcheck 用)。
+  location = /edge-healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+
+  # ---------- 管理画面: 社内 IP 制限の代わり ----------
+  # 127.0.0.1(edge 自身)と、ラボの Docker ネットワーク(172.30.89.0/24)からだけ通します。
+  # ただし 172.30.89.1 はネットワークの出入口(ホスト PC のブラウザから来た通信がこの番号に見えることがある)なので拒否します。
+  location /admin/ {
+    allow 127.0.0.1;
+    deny  172.30.89.1;
+    allow 172.30.89.0/24;
+    deny  all;
+    proxy_pass $api_upstream;
+  }
+
+  # web の指標は外に見せません(Prometheus は web:4000 を直接見に行きます)。
+  location = /metrics {
+    allow 127.0.0.1;
+    deny  all;
+    proxy_pass $web_upstream;
+  }
+
+  # ---------- API ----------
+  # ログイン: 1 秒 1 回まで。最初の 5 回はまとめて通します(burst=5)。
+  location = /api/login {
+    limit_req zone=login burst=5 nodelay;
+    limit_req zone=per_ip burst=40 nodelay;
+    proxy_pass $api_upstream;
+  }
+
+  # 商品の API はキャッシュします。
+  location /api/products {
+    proxy_cache store_cache;
+    proxy_pass $api_upstream;
+  }
+
+  location /api/ {
+    proxy_pass $api_upstream;
+  }
+
+  # ---------- 画面(web) ----------
+  # 商品一覧・商品詳細の HTML はキャッシュします。
+  location ~ ^/products(/[0-9]+)?/?$ {
+    proxy_cache store_cache;
+    proxy_pass $web_upstream;
+  }
+
+  location / {
+    proxy_pass $web_upstream;
+  }
+}

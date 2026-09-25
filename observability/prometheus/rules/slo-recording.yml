@@ -1,0 +1,132 @@
+# 記録ルール(recording rules): よく使う計算を先にしておき、名前を付けて保存します。
+# たとえ: 毎回そろばんを弾かずに済むよう、よく使う合計を帳簿の欄に書き写しておくことです。
+#
+# ここで作る SLI(サービスの調子を表す数字):
+#   成功率 = 5xx 以外の件数 ÷ 全体の件数
+#   p95 応答時間 = 100 件並べたとき遅い方から 5 件目の速さ(ほとんどの人が体験する「遅め」の速さ)
+#
+# 数える対象から外すもの: 見守り用の /metrics・/healthz・/readyz、管理用の /admin/*、どのルートにも当たらなかった物(unmatched)。
+# 利用者の体験とは関係がないためです。
+#
+# 名前の付け方は「level:metric:operations」(Prometheus の慣習)にしています。
+
+groups:
+  - name: sli-api
+    interval: 5s
+    rules:
+      # ---- 件数(1 秒あたり) ----
+      - record: job:http_requests:rate5m
+        expr: sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m]))
+
+      # ---- エラー率(5xx ÷ 全体)を、窓の長さ別に作ります ----
+      # 「or ... * 0」は、5xx が 1 件も無いときに結果が空にならず 0 になるようにするための書き方です。
+      # 窓 = どれだけの時間をまとめて見るか。短い窓は「今」に敏感、長い窓は「一時的なぶれ」に強い。
+      - record: job:http_errors:ratio_rate5m
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m]))
+            or
+            sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m])) * 0
+          )
+          /
+          sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m]))
+      - record: job:http_errors:ratio_rate30m
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30m]))
+            or
+            sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30m])) * 0
+          )
+          /
+          sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30m]))
+      - record: job:http_errors:ratio_rate1h
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1h]))
+            or
+            sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1h])) * 0
+          )
+          /
+          sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1h]))
+      - record: job:http_errors:ratio_rate6h
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[6h]))
+            or
+            sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[6h])) * 0
+          )
+          /
+          sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[6h]))
+      # 1 か月(30 日)。エラーバジェットの残りを出すのに使います。ラボでは起動してからの分しかデータがありません。
+      - record: job:http_errors:ratio_rate30d
+        expr: |
+          (
+            sum by (job) (increase(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30d]))
+            or
+            sum by (job) (increase(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30d])) * 0
+          )
+          /
+          sum by (job) (increase(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[30d]))
+      # デモ用の短い窓(1 分)。演習で「すぐ鳴る」アラートを見るためだけに使います。
+      - record: job:http_errors:ratio_rate1m
+        expr: |
+          (
+            sum by (job) (rate(http_requests_total{status=~"5..", route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1m]))
+            or
+            sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1m])) * 0
+          )
+          /
+          sum by (job) (rate(http_requests_total{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[1m]))
+
+      # ---- 成功率(SLI)= 1 − エラー率 = 5xx 以外 ÷ 全体 ----
+      - record: job:sli_success:ratio_rate5m
+        expr: 1 - job:http_errors:ratio_rate5m
+
+      # ---- p95 応答時間(秒) ----
+      - record: job:http_request_duration_seconds:p95_rate5m
+        expr: |
+          histogram_quantile(0.95,
+            sum by (job, le) (rate(http_request_duration_seconds_bucket{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m])))
+
+  - name: slo-api
+    interval: 5s
+    rules:
+      # SLO(目標)は「1 か月の成功率 99.9%」。
+      #   エラーバジェット(失敗してよい量)= 1 − 0.999 = 0.001(= 0.1%)
+      #   30 日 = 43,200 分なので、全部止まるなら約 43 分ぶんが 1 か月の持ち分です。
+      #
+      # バーンレート(予算を燃やす速さ)= その窓のエラー率 ÷ 0.001
+      #   1   … ちょうど 30 日で予算を使い切る速さ
+      #   14.4… 1 時間で 1 か月分の 2%(= 14.4 × 1h ÷ 720h)を使う速さ。このままだと約 2 日で使い切る
+      #   6   … 6 時間で 1 か月分の 5%(= 6 × 6h ÷ 720h)を使う速さ。このままだと 5 日で使い切る
+      - record: job:slo_burn_rate:1m
+        expr: job:http_errors:ratio_rate1m / 0.001
+      - record: job:slo_burn_rate:5m
+        expr: job:http_errors:ratio_rate5m / 0.001
+      - record: job:slo_burn_rate:30m
+        expr: job:http_errors:ratio_rate30m / 0.001
+      - record: job:slo_burn_rate:1h
+        expr: job:http_errors:ratio_rate1h / 0.001
+      - record: job:slo_burn_rate:6h
+        expr: job:http_errors:ratio_rate6h / 0.001
+
+      # エラーバジェットの残り(割合)= 1 − (30 日のエラー率 ÷ 0.001)
+      #   1 なら満タン、0 なら使い切り、マイナスなら使いすぎ。
+      - record: job:slo_error_budget_remaining:ratio30d
+        expr: 1 - (job:http_errors:ratio_rate30d / 0.001)
+
+  - name: sli-web-ssr
+    interval: 5s
+    rules:
+      # SSR(サーバーで画面を組み立てる処理)の p95 時間(秒)
+      - record: job:ssr_render_duration_seconds:p95_rate5m
+        expr: histogram_quantile(0.95, sum by (job, le) (rate(ssr_render_duration_seconds_bucket[5m])))
+      # SSR のフォールバック率 = 諦めて空の HTML(CSR)を返した回数 ÷ SSR を試みた回数
+      #   分母の ssr_render_duration_seconds_count は、フォールバックした回も含めて 1 回ずつ数える約束です。
+      - record: job:ssr_fallback:ratio_rate5m
+        expr: |
+          sum by (job) (rate(ssr_fallback_total[5m]))
+          /
+          sum by (job) (rate(ssr_render_duration_seconds_count[5m]))
+      - record: job:ssr_errors:rate5m
+        expr: sum by (job) (rate(ssr_errors_total[5m]))

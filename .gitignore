@@ -1,0 +1,27 @@
+# 依存パッケージとビルドの成果物
+node_modules/
+dist/
+.angular/
+
+# DB のバックアップ(tools/backup.sh が作る。個人の手元にだけ置きます)
+backups/
+
+# 試験の結果
+test-results/
+playwright-report/
+k6-results/
+
+# 手元の設定・秘密(公開リポジトリなので絶対に入れない)
+.env
+.env.*
+*.pem
+*.key
+
+# OS・エディタ
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# VitePress の作業用フォルダ
+docs/.vitepress/cache/

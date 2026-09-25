@@ -1,0 +1,95 @@
+# アラートルール: 条件を満たしたら Alertmanager に知らせます。
+#
+# SLO「1 か月の成功率 99.9%」に対し、エラーバジェットの消費速度(バーンレート)で鳴らします。
+#   バーンレート = 窓のエラー率 ÷ (1 − 0.999)
+#
+# 「2 つの窓」を両方満たしたときだけ鳴らすのがコツです(マルチウィンドウ):
+#   長い窓 … 本当に予算を削るほど続いているか(ちょっとしたぶれでは鳴らさない)
+#   短い窓 … 今もまだ起きているか(直ったあとも長い窓に引きずられて鳴り続けない)
+#
+#   緊急(page)  : 1 時間窓 > 14.4 かつ 5 分窓 > 14.4   … 1 か月の予算の 2% を 1 時間で消費。すぐ人を起こす
+#   警告(ticket): 6 時間窓 > 6    かつ 30 分窓 > 6     … 1 か月の予算の 5% を 6 時間で消費。営業時間内に対応
+#
+# 14.4 の出し方: 予算の 2% を 1 時間で使う → 0.02 × 720 時間(30 日)÷ 1 時間 = 14.4
+# 6 の出し方    : 予算の 5% を 6 時間で使う → 0.05 × 720 時間 ÷ 6 時間 = 6
+
+groups:
+  - name: slo-burn-rate
+    rules:
+      - alert: ErrorBudgetBurnPage
+        expr: |
+          job:slo_burn_rate:5m > 14.4
+          and
+          job:slo_burn_rate:1h > 14.4
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $labels.job }}: エラーバジェットを急速に消費しています(緊急)"
+          description: "5 分窓のバーンレートが {{ $value | printf \"%.1f\" }} です。このままだと約 2 日で 1 か月分の予算を使い切ります。"
+
+      - alert: ErrorBudgetBurnTicket
+        expr: |
+          job:slo_burn_rate:30m > 6
+          and
+          job:slo_burn_rate:6h > 6
+        for: 5m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }}: エラーバジェットの消費が速めです(警告)"
+          description: "30 分窓のバーンレートが {{ $value | printf \"%.1f\" }} です。営業時間内に原因を調べてください。"
+
+  # ---- デモ用(演習で「すぐ鳴る」様子を見るためのもの。本番では使いません) ----
+  # 窓を 1 分と 5 分に縮め、待ち時間(for)も無くしています。
+  # 演習で不要なら、この group を丸ごと消すか、コメントにしてください(読み直し: curl -X POST http://localhost:19090/-/reload)。
+  - name: slo-burn-rate-demo
+    rules:
+      - alert: ErrorBudgetBurnDemo
+        expr: |
+          job:slo_burn_rate:1m > 14.4
+          and
+          job:slo_burn_rate:5m > 14.4
+        for: 0s
+        labels:
+          severity: demo
+          purpose: デモ用
+        annotations:
+          summary: "【デモ用】{{ $labels.job }}: バーンレートが 14.4 を超えました(1 分窓と 5 分窓)"
+          description: "演習用の短い窓のアラートです。1 分窓のバーンレート: {{ $value | printf \"%.1f\" }}"
+
+  - name: ssr
+    rules:
+      # SSR のフォールバック率が 5% を超えたら警告します。
+      # フォールバック = API が遅いなどで SSR を諦め、ブラウザで組み立てる空の HTML を返したこと。
+      # 画面は出るが、初回表示が遅くなり、検索エンジンにも中身が見えません。
+      - alert: SSRFallbackRatioHigh
+        expr: job:ssr_fallback:ratio_rate5m > 0.05
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }}: SSR のフォールバック率が 5% を超えています"
+          description: "直近 5 分のフォールバック率: {{ $value | humanizePercentage }}。API の遅延(latencyMs)を疑ってください。"
+
+      # SSR そのものが失敗している(例: サーバー側で window を触って落ちた)。
+      - alert: SSRErrors
+        expr: job:ssr_errors:rate5m > 0
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "{{ $labels.job }}: SSR でエラーが起きています"
+          description: "1 秒あたり {{ $value | printf \"%.2f\" }} 件の SSR エラー。web のログ(Grafana の Loki パネル)を確かめてください。"
+
+  - name: targets
+    rules:
+      # 指標を取りに行けない = そのサービスが落ちているかもしれない。
+      - alert: TargetDown
+        expr: up{job=~"api|web"} == 0
+        for: 1m
+        labels:
+          severity: page
+        annotations:
+          summary: "{{ $labels.job }} の指標が取れません(停止しているかもしれません)"
+          description: "Prometheus から {{ $labels.instance }} に届きません。docker compose ps で状態を確かめてください。"

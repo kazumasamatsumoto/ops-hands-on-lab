@@ -1,0 +1,12 @@
+# Grafana のダッシュボードを、ファイルから自動で読み込みます。
+apiVersion: 1
+
+providers:
+  - name: samplestore
+    folder: サンプルストア
+    type: file
+    disableDeletion: true
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/dashboards

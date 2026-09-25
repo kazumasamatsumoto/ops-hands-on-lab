@@ -1,0 +1,77 @@
+/* サンプルストア全体の見た目。UI ライブラリは使わず、最小限の CSS だけにしています。 */
+:root {
+  --bg: #f7f7f5;
+  --surface: #ffffff;
+  --text: #1f2328;
+  --muted: #5f6670;
+  --line: #dcdfe3;
+  --accent: #1f6feb;
+  --accent-text: #ffffff;
+  --danger: #c62828;
+  --ssr: #1b7f3b;
+  --csr: #8a5a00;
+  font-family: system-ui, -apple-system, "Hiragino Sans", "Noto Sans JP", sans-serif;
+  color: var(--text);
+  background: var(--bg);
+  line-height: 1.7;
+}
+* { box-sizing: border-box; }
+body { margin: 0; min-height: 100vh; display: flex; flex-direction: column; }
+app-root { display: flex; flex-direction: column; min-height: 100vh; }
+a { color: var(--accent); }
+h1 { font-size: 1.6rem; margin: 0.5rem 0 1rem; }
+h2 { font-size: 1.15rem; margin: 0 0 0.5rem; }
+
+.wrap { width: 100%; max-width: 1040px; margin: 0 auto; padding: 0 16px; }
+.main { flex: 1; padding-top: 1.5rem; padding-bottom: 2rem; }
+
+.site-header { background: var(--surface); border-bottom: 1px solid var(--line); }
+.header-inner { display: flex; align-items: center; justify-content: space-between; gap: 1rem; min-height: 56px; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 1.15rem; color: var(--text); text-decoration: none; }
+.nav { display: flex; gap: 1rem; align-items: center; flex-wrap: wrap; }
+.nav a { text-decoration: none; color: var(--muted); }
+.nav a.active { color: var(--text); font-weight: 600; }
+.link-button { background: none; border: none; color: var(--muted); cursor: pointer; font: inherit; padding: 0; }
+
+.site-footer { background: var(--surface); border-top: 1px solid var(--line); font-size: 0.85rem; color: var(--muted); }
+.footer-inner { display: flex; justify-content: space-between; align-items: center; gap: 1rem; min-height: 48px; flex-wrap: wrap; }
+.render-badge { padding: 2px 10px; border-radius: 999px; border: 1px solid currentColor; font-weight: 600; }
+.render-badge[data-mode="ssr"] { color: var(--ssr); }
+.render-badge[data-mode="csr"], .render-badge[data-mode="fallback"] { color: var(--csr); }
+
+.hero { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1.5rem; margin-bottom: 1.5rem; }
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; }
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1rem; }
+
+.search { display: flex; gap: 0.5rem; margin: 1rem 0; max-width: 480px; }
+input { font: inherit; padding: 0.45rem 0.6rem; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); width: 100%; }
+button, .button { font: inherit; padding: 0.45rem 1rem; border-radius: 6px; border: 1px solid var(--accent); background: var(--accent); color: var(--accent-text); cursor: pointer; text-decoration: none; display: inline-block; white-space: nowrap; }
+button[disabled] { opacity: 0.6; cursor: default; }
+
+.product-grid { list-style: none; padding: 0; margin: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
+.product-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem; display: flex; flex-direction: column; gap: 0.25rem; }
+.product-card a { text-decoration: none; color: var(--text); display: flex; flex-direction: column; gap: 0.5rem; }
+.product-card img, .noimage { width: 100%; height: auto; aspect-ratio: 16 / 10; object-fit: cover; border-radius: 4px; }
+.noimage { background: #eceef1; color: var(--muted); display: flex; align-items: center; justify-content: center; font-size: 0.85rem; }
+.noimage.large { max-width: 480px; }
+.product-name { font-weight: 600; }
+.price { color: var(--text); }
+.price.large { font-size: 1.4rem; font-weight: 700; }
+.badge { display: inline-block; font-size: 0.75rem; padding: 0 8px; border-radius: 999px; }
+.badge.out { background: #fdecea; color: var(--danger); }
+
+.detail { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 1.5rem; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem; }
+.detail img { width: 100%; height: auto; border-radius: 4px; }
+.description { white-space: pre-wrap; }
+@media (max-width: 640px) { .detail { grid-template-columns: 1fr; } }
+
+.login-form { display: flex; flex-direction: column; gap: 0.75rem; max-width: 360px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 1.25rem; }
+.login-form label { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.orders { width: 100%; border-collapse: collapse; background: var(--surface); border: 1px solid var(--line); }
+.orders th, .orders td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--line); text-align: left; }
+.orders .num { text-align: right; }
+
+.muted { color: var(--muted); }
+.error { color: var(--danger); }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }

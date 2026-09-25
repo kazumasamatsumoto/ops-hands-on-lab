@@ -1,0 +1,27 @@
+<header class="site-header">
+  <div class="wrap header-inner">
+    <a routerLink="/" class="brand">サンプルストア</a>
+    <nav class="nav">
+      <a routerLink="/products" routerLinkActive="active">商品一覧</a>
+      <a routerLink="/me/orders" routerLinkActive="active">注文履歴</a>
+      @if (auth.token()) {
+        <button type="button" class="link-button" (click)="auth.logout()">ログアウト</button>
+      } @else {
+        <a routerLink="/login" routerLinkActive="active">ログイン</a>
+      }
+    </nav>
+  </div>
+</header>
+
+<main class="wrap main">
+  <router-outlet />
+</main>
+
+<footer class="site-footer">
+  <div class="wrap footer-inner">
+    <span>サンプル株式会社(架空の会社です)</span>
+    <span class="render-badge" [attr.data-mode]="renderMode" data-testid="render-mode">
+      描画モード: {{ renderModeLabel }}
+    </span>
+  </div>
+</footer>

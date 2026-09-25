@@ -1,0 +1,155 @@
+# サンプルストア 体験ラボ(軽量版)の構成です。
+#
+#   起動:   docker compose up -d --build
+#   停止:   docker compose down        (データも消すなら docker compose down -v)
+#
+# ホスト側のポート(ブラウザで開く番号):
+#   edge(お店の入口) 18080 / Grafana 13000 / Prometheus 19090 / Alertmanager 19093 / pager 19094
+#   8080 や 3000 は他のアプリとよくぶつかるので、1 万番台にしています。
+#
+# メモリの上限は合計でおよそ 2GB です(Docker Desktop に 8GB 割り当てていれば余裕があります)。
+
+name: lab
+
+include:
+  # 観測(Prometheus・Alertmanager・Grafana・Loki・Alloy・pager)は別ファイルにまとめています。
+  - observability/compose.yml
+
+services:
+  # ---------- データベース ----------
+  db:
+    image: postgres:17.11-alpine
+    environment:
+      # ラボ専用の見本の値です。本番では秘密の値を別の仕組み(Secret など)で渡します。
+      POSTGRES_USER: store
+      POSTGRES_PASSWORD: store
+      POSTGRES_DB: store
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U store -d store"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # ---------- API(商品・ログイン・注文) ----------
+  api:
+    build: ./apps/api
+    image: lab/api:local
+    environment:
+      PORT: "3001"
+      PGHOST: db
+      PGUSER: store
+      PGPASSWORD: store
+      PGDATABASE: store
+      # ラボ用の署名鍵です(本物の秘密ではありません)。
+      # 本番では、ここに値を書かず、リポジトリに入れない .env ファイルや Secret から渡します(演習 インフラ-2)。
+      JWT_SECRET: ${JWT_SECRET:-lab-only-not-a-real-secret}
+      LOG_LEVEL: info
+      # わざと壊すスイッチの「起動時の値」。動かしながら変えるときは tools/chaos.sh を使います。
+      # 「CHAOS_LEAK_MB=20 docker compose up -d api」のように、コマンドの前に書いて起動時の値を変えられます(演習 障害-2)。
+      CHAOS_LATENCY_MS: ${CHAOS_LATENCY_MS:-0}
+      CHAOS_ERROR_RATE: ${CHAOS_ERROR_RATE:-0}
+      CHAOS_LEAK_MB: ${CHAOS_LEAK_MB:-0}
+      CHAOS_IDOR_BUG: ${CHAOS_IDOR_BUG:-false}
+      CHAOS_SQLI_BUG: ${CHAOS_SQLI_BUG:-false}
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/readyz"]
+      interval: 5s
+      timeout: 3s
+      start_period: 20s
+      retries: 5
+    # leakMb の演習では、この上限を超えたところでコンテナが強制終了(OOM)され、自動で再起動します。
+    mem_limit: 256m
+    restart: unless-stopped
+
+  # ---------- 画面(Angular SSR) ----------
+  web:
+    build: ./apps/web
+    image: lab/web:local
+    environment:
+      PORT: "4000"
+      # 演習では「RENDER_MODE=csr docker compose up -d web」のように、コマンドの前に書いて一時的に変えられます(書かなければ右の既定値)。
+      RENDER_MODE: ${RENDER_MODE:-ssr} # ssr または csr
+      API_INTERNAL_URL: http://api:3001
+      SSR_TIMEOUT_MS: ${SSR_TIMEOUT_MS:-3000}
+      SSR_WINDOW_BUG: ${SSR_WINDOW_BUG:-false}
+      # Angular SSR は知らない Host ヘッダを 400 で断ります。edge から来る名前を許可しておきます。
+      NG_ALLOWED_HOSTS: localhost,127.0.0.1,web,edge
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      start_period: 30s
+      retries: 5
+    mem_limit: 384m
+    restart: unless-stopped
+
+  # ---------- 入口(CDN と WAF の代わり) ----------
+  edge:
+    image: owasp/modsecurity-crs:4.25.1-nginx-alpine-202609241109-lts
+    ports:
+      - "18080:8080"
+    environment:
+      # --- キャッシュ: on で有効、off で無効(ここ 1 か所で切り替え) ---
+      # 演習では「EDGE_CACHE=off docker compose up -d edge」のように一時的に変えられます(下の EDGE_GLOBAL_RATE・BLOCKING_PARANOIA・ANOMALY_INBOUND も同じ)。
+      EDGE_CACHE: ${EDGE_CACHE:-on}
+      # --- 全体のレート制限(IP ごと) ---
+      EDGE_GLOBAL_RATE: ${EDGE_GLOBAL_RATE:-20r/s}
+      # --- CSP(このサイトが読み込んでよい物の一覧) ---
+      # script-src は「自分のサイトの JS ファイル」と、Angular が HTML に埋め込む小さなスクリプト 4 つ(sha256 の指紋で指定)だけを許します。
+      # 攻撃者が差し込んだ <script> は指紋が合わないので動きません(XSS の被害を小さくする最後の防壁)。
+      # Angular を更新して埋め込みスクリプトが変わると、ブラウザの開発者ツールに「Refused to execute inline script ...
+      # sha256-...」と出ます。そこに表示された指紋をここに足してください(docker compose up -d edge で反映)。
+      EDGE_CSP: "default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-VM2mZqyEQZoLzoTrp5EigFvzQ0+f1wSeBuoOn95WHCg=' 'sha256-8sGKvDKC8crv9OBcqEMvqrNDWlm1/80h7NJpJzqOnLI=' 'sha256-AjQQ1QCZ2iCwycbT8XbBx1OIdXf2xxLNb7TySQf3WR4=' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      # --- WAF(ModSecurity + OWASP CRS) ---
+      MODSEC_RULE_ENGINE: "On" # On = 遮断する / DetectionOnly = 記録だけ
+      BLOCKING_PARANOIA: ${BLOCKING_PARANOIA:-1} # 疑い深さ 1〜4。上げるほど厳しく、誤遮断も増えます
+      ANOMALY_INBOUND: ${ANOMALY_INBOUND:-5} # 怪しさの点数がこれ以上で遮断。上げるほど甘くなります
+      ANOMALY_OUTBOUND: "4"
+      MODSEC_AUDIT_LOG_FORMAT: JSON
+      MODSEC_AUDIT_LOG: /dev/stdout
+      RESOLVERS: 127.0.0.11
+      # CRS イメージ既定の backend 設定は使いません(振り分けは edge/default.conf.template に書いています)。
+      BACKEND: http://api:3001
+    volumes:
+      - ./edge/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+      # 誤遮断を直すための例外ルール(CRS のプラグインの置き場所に入れると、本体ルールより先に読まれます)
+      - ./edge/modsecurity/lab-exclusions-before.conf:/opt/owasp-crs/plugins/lab-exclusions-before.conf:ro
+    # web がまだ無くても起動できるよう、待つのは api だけにしています。
+    depends_on:
+      api:
+        condition: service_started
+    healthcheck:
+      # Host に IP アドレスを使うと WAF が「怪しい」と記録するので、名前(localhost)で呼びます。
+      test: ["CMD", "curl", "-fsS", "-H", "Host: localhost", "http://127.0.0.1:8080/edge-healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    # edge は web・api へのリクエストのたびに新しい接続を作ります。キャッシュを切って 1 秒に数百回の負荷をかけると、
+    # 閉じた接続の後始末(TIME_WAIT)で「つなぎ口の番号」が足りなくなり 502 が出ました(演習 性能-2 で実際に起きたこと)。
+    # 使える番号を広げ、後始末中の番号を使い回せるようにしておきます。
+    sysctls:
+      net.ipv4.ip_local_port_range: "1024 65535"
+      net.ipv4.tcp_tw_reuse: "1"
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  db-data:
+
+networks:
+  default:
+    # edge の管理画面の IP 制限で使うため、番号の範囲を固定しています(edge/default.conf.template と合わせる)。
+    ipam:
+      config:
+        - subnet: 172.30.89.0/24
+          gateway: 172.30.89.1

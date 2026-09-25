@@ -1,0 +1,83 @@
+# API(商品・ログイン・注文)です。
+#
+# Deployment = 「同じ Pod を決まった数だけ動かし続ける」係です。
+#   replicas: 2   … 同じ Pod を 2 つ。1 つが落ちても、もう 1 つがお客さんに応えます。
+#   Pod が消えると、ReplicaSet(Deployment の下で数を数える係)がすぐに新しい Pod を作ります。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api
+  labels: { app: api }
+spec:
+  replicas: 2
+  selector:
+    matchLabels: { app: api }
+  # ローリング更新: 新しい Pod を 1 つ足し(maxSurge)、準備できてから古い Pod を 1 つ減らす、を繰り返します。
+  # maxUnavailable: 0 なので、更新中もお客さんに応える Pod の数が減りません(止めずに入れ替える)。
+  strategy:
+    type: RollingUpdate
+    rollingUpdate: { maxSurge: 1, maxUnavailable: 0 }
+  template:
+    metadata:
+      labels: { app: api }
+    spec:
+      terminationGracePeriodSeconds: 20
+      containers:
+        - name: api
+          image: lab/api:local # 軽量版と同じイメージ(k8s/up.sh がビルドして kind に読み込みます)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 3001 }
+          envFrom:
+            - configMapRef: { name: api-config }
+          env:
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef: { name: lab-secrets, key: POSTGRES_PASSWORD }
+            - name: JWT_SECRET
+              valueFrom:
+                secretKeyRef: { name: lab-secrets, key: JWT_SECRET }
+          # --- ヘルスチェック(probe = 看護師さんの見回り) ---
+          # startupProbe: 起動が終わるまでの見回り。api は DB の準備を待つので、最大 180 秒まで待ちます
+          #   (初回は DB のイメージ取得に 1〜2 分かかるため。60 秒だと待ちきれずに再起動していました)。
+          startupProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 2
+            failureThreshold: 90
+          # readinessProbe: 「お客さんを受けられるか」。/readyz は DB に届かないと 503 を返します。
+          #   失敗すると Pod は Not Ready になり、Service の振り分け先から外されます(Pod は殺されません)。
+          readinessProbe:
+            httpGet: { path: /readyz, port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 2
+          # livenessProbe: 「生きているか」。失敗が続くと kubelet がコンテナを再起動します。
+          #   DB を見ない /healthz を使うのがポイントです(DB が落ちただけで api を再起動しても直らないため)。
+          livenessProbe:
+            httpGet: { path: /healthz, port: http }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # --- 使ってよい量 ---
+          # requests: 「最低これだけは確保してね」という予約。ノードに置けるかの判断に使われます。
+          # limits:   「これ以上は使わせない」という上限。メモリの上限を超えると、その場で強制終了(OOMKilled)されます。
+          #   leakMb の演習では、この 192Mi を超えたところで OOMKilled → 再起動を繰り返し → CrashLoopBackOff になります。
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { cpu: 500m, memory: 192Mi }
+          lifecycle:
+            # 止める前に 5 秒待ちます。その間に Service の振り分け先から外れるので、処理中のお客さんを切りません。
+            preStop:
+              sleep: { seconds: 5 }
+---
+# Service = Pod たちの前に立つ「代表の窓口」です。Pod は作り直すたびに IP が変わりますが、
+# Service の名前(api)と番号は変わりません。Ready の Pod にだけ振り分けます。
+apiVersion: v1
+kind: Service
+metadata:
+  name: api
+  labels: { app: api }
+spec:
+  selector: { app: api }
+  ports:
+    - { name: http, port: 3001, targetPort: http }

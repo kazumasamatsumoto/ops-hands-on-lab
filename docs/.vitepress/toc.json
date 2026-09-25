@@ -1,0 +1,57 @@
+{
+  "guide": [
+    ["about", "このラボについて(はじめに)"],
+    ["setup", "準備と起動(軽量版・本格版)"],
+    ["sier-mapping", "SIer の言葉との対応表"],
+    ["map", "地図: 構成図と設計書の対応"],
+    ["checklist", "開発・運用に必要なこと一覧"],
+    ["glossary", "用語集"]
+  ],
+  "exercises": [
+    ["01-fe-ssr-vs-csr", "FE-1 SSR と CSR を見比べる"],
+    ["02-fe-ssr-rules", "FE-2 SSR で壊れる書き方"],
+    ["03-fe-lazy-loading", "FE-3 遅延読み込みと JS の予算"],
+    ["04-be-api-and-authz", "BE-1 API と認可の事故(他人の注文が見える)"],
+    ["05-infra-rolling-update", "インフラ-1 止めずに版を上げる(ローリング更新)"],
+    ["06-infra-config-and-secrets", "インフラ-2 設定値とシークレットを環境で分ける"],
+    ["07-nw-cache", "ネットワーク-1 前段のキャッシュ"],
+    ["08-nw-cors-and-ip", "ネットワーク-2 CORS と IP 制限"],
+    ["09-sre-sli-slo", "SRE-1 SLI を測って SLO と比べる"],
+    ["10-sre-burn-rate-alert", "SRE-2 エラーバジェットとアラート"],
+    ["11-qa-e2e-regression", "QA-1 E2E テストと画面比較"],
+    ["12-perf-load-test", "性能-1 負荷試験で限界を見る"],
+    ["13-perf-scale-out", "性能-2 台数を増やして耐える"],
+    ["14-incident-slow-api", "障害-1 API が遅い → SSR が逃げる"],
+    ["15-incident-crashloop", "障害-2 メモリ不足で再起動を繰り返す"],
+    ["16-dr-backup-restore", "DR-1 バックアップから戻す(RTO と RPO を測る)"],
+    ["17-sec-waf", "セキュリティ-1 WAF が攻撃を止める"],
+    ["18-sec-rate-limit-login", "セキュリティ-2 ログインの連打を止める"],
+    ["19-sec-csp", "セキュリティ-3 CSP で外部スクリプトを止める"]
+  ],
+  "architecture": [
+    ["00-overall", "全体方式"],
+    ["01-frontend", "FE 方式"],
+    ["02-backend", "BE 方式"],
+    ["03-infrastructure", "インフラ方式"],
+    ["04-network", "ネットワーク方式"],
+    ["05-sre", "SRE 方式"],
+    ["06-qa", "QA 方式"],
+    ["07-performance", "性能方式"],
+    ["08-incident-response", "障害対応方式"],
+    ["09-disaster-recovery", "DR 方式"],
+    ["10-security", "セキュリティ方式"]
+  ],
+  "detail": [
+    ["D-FE-04-product-detail", "D-FE-04 商品詳細画面"],
+    ["D-FE-22-ssr-server", "D-FE-22 SSR サーバー(server.ts)"],
+    ["D-BE-orders-api", "D-BE 注文 API と認可"],
+    ["D-INF-01-compose-and-k8s", "D-INF-01 起動構成(compose と Kubernetes)"],
+    ["D-NW-01-edge-route", "D-NW-01 edge の経路とキャッシュ"],
+    ["D-SRE-02-slo-burn-rate", "D-SRE-02 SLO とバーンレートのアラート"],
+    ["D-QA-04-e2e", "D-QA-04 E2E テスト"],
+    ["D-PERF-05-load-test", "D-PERF-05 負荷試験"],
+    ["D-INC-03-slow-api", "D-INC-03 API の応答遅延"],
+    ["D-DR-02-backup-restore", "D-DR-02 バックアップと復元"],
+    ["D-SEC-01-waf-and-rate-limit", "D-SEC-01 WAF とレート制限"]
+  ]
+}

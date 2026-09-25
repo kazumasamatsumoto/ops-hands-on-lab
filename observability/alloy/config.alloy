@@ -1,0 +1,65 @@
+// Grafana Alloy の設定です。Docker のソケットから、このラボ(compose の project 名 lab)のコンテナのログを読み、Loki へ送ります。
+// (以前よく使われた Promtail は開発が終わったため、後継の Alloy を使っています)
+
+// 1. 動いているコンテナの一覧を Docker から教えてもらう
+discovery.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  refresh_interval = "10s"
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=lab"]
+  }
+}
+
+// 2. Loki で探しやすいよう、ラベル(付箋)を付ける
+//    service   … compose のサービス名(api, web, edge, db など)
+//    container … コンテナ名
+discovery.relabel "containers" {
+  targets = discovery.docker.containers.targets
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_docker_container_name"]
+    regex         = "/(.*)"
+    target_label  = "container"
+  }
+  rule {
+    target_label = "project"
+    replacement  = "lab"
+  }
+}
+
+// 3. 各コンテナのログを読む
+loki.source.docker "containers" {
+  host             = "unix:///var/run/docker.sock"
+  targets          = discovery.relabel.containers.output
+  relabel_rules    = discovery.relabel.containers.rules
+  forward_to       = [loki.process.json.receiver]
+  refresh_interval = "10s"
+}
+
+// 4. JSON のログ(api の pino、edge のアクセスログ)から「レベル」を取り出してラベルにする
+loki.process "json" {
+  stage.json {
+    expressions = { level = "level" }
+  }
+  // pino はレベルを数字で出す(30=info, 40=warn, 50=error)ので、言葉に直します。
+  stage.template {
+    source   = "level"
+    template = "{{ if eq .Value \"30\" }}info{{ else if eq .Value \"40\" }}warn{{ else if eq .Value \"50\" }}error{{ else if eq .Value \"60\" }}fatal{{ else if eq .Value \"20\" }}debug{{ else }}{{ .Value }}{{ end }}"
+  }
+  stage.labels {
+    values = { level = "" }
+  }
+  forward_to = [loki.write.local.receiver]
+}
+
+// 5. Loki へ送る
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}

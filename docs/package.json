@@ -1,0 +1,14 @@
+{
+  "name": "ops-hands-on-lab-docs",
+  "private": true,
+  "type": "module",
+  "description": "体験ラボの演習・地図・必要なこと一覧・設計書(VitePress)",
+  "scripts": {
+    "dev": "vitepress dev . --port 15178 --open",
+    "build": "vitepress build .",
+    "preview": "vitepress preview . --port 15178"
+  },
+  "devDependencies": {
+    "vitepress": "1.6.4"
+  }
+}

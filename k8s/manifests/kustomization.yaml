@@ -1,0 +1,14 @@
+# kubectl apply -k k8s/manifests でまとめて反映するための目次です。
+# 設定ファイル(nginx・Prometheus・Grafana など)の ConfigMap は、軽量版と同じファイルから k8s/up.sh が作ります。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - configmap-app.yaml
+  - db.yaml
+  - api.yaml
+  - web.yaml
+  - edge.yaml
+  - observability.yaml

@@ -1,0 +1,128 @@
+# 観測(オブザーバビリティ)の道具一式です。ルートの docker-compose.yml から include で読み込まれます。
+#
+#   Prometheus    … 指標(数字)を 5 秒ごとに集めて保存し、ルールで SLI・アラートを計算します
+#   Alertmanager  … アラートを受け取り、まとめて通知先(pager)へ送ります
+#   pager         … 通知を受けて画面に並べるだけの小さな受け口(外部には送りません)
+#   Grafana       … グラフで見る画面(匿名で閲覧できます)
+#   Loki          … ログの保管庫
+#   Alloy         … 各コンテナのログを Docker から読み取って Loki へ運ぶ係
+
+services:
+  prometheus:
+    image: prom/prometheus:v3.15.0
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=31d
+      - --web.enable-lifecycle # POST /-/reload で設定を読み直せるようにします
+    ports:
+      - "19090:9090"
+    volumes:
+      - ./prometheus:/etc/prometheus:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9090/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 256m
+    restart: unless-stopped
+
+  alertmanager:
+    image: prom/alertmanager:v0.34.1
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+    ports:
+      - "19093:9093"
+    volumes:
+      - ./alertmanager:/etc/alertmanager:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9093/-/ready"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+    restart: unless-stopped
+
+  pager:
+    image: node:24.21.0-alpine
+    command: ["node", "/app/server.mjs"]
+    user: node
+    environment:
+      PORT: "9094"
+    ports:
+      - "19094:9094"
+    volumes:
+      - ./pager/server.mjs:/app/server.mjs:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:9094/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.4.11
+    environment:
+      # ラボなので、ログインしなくても閲覧だけはできるようにします(本番ではしません)。
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # 編集したいときの管理者(ラボ専用の見本の値です)。
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_DEFAULT_LANGUAGE: ja-JP
+      GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH: /etc/grafana/dashboards/samplestore-slo.json
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+    ports:
+      - "13000:3000"
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/api/health"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+    mem_limit: 256m
+    restart: unless-stopped
+
+  loki:
+    image: grafana/loki:3.7.8
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki-data:/loki
+    # Loki のイメージにはシェルや wget が無い(最小構成の distroless)ため、healthcheck は付けていません。
+    # 状態は Grafana から http://loki:3100/ready で確かめられます。
+    mem_limit: 256m
+    restart: unless-stopped
+
+  alloy:
+    image: grafana/alloy:v1.20.0
+    command:
+      - run
+      - --server.http.listen-addr=0.0.0.0:12345
+      - --storage.path=/var/lib/alloy/data
+      - /etc/alloy/config.alloy
+    volumes:
+      - ./alloy/config.alloy:/etc/alloy/config.alloy:ro
+      # Docker のソケットを「読むだけ」で渡し、各コンテナのログを取り出します。
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    depends_on:
+      - loki
+    mem_limit: 128m
+    restart: unless-stopped
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  loki-data:
