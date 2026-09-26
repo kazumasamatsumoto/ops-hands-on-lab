@@ -8,7 +8,7 @@
 | 仕組み | docker compose(Docker だけ) | kind(Docker の中で動く小さな Kubernetes) |
 | 向いている演習 | ほとんど全部 | 台数・ヘルスチェック・ローリング更新・メモリ上限・トレース・環境の切り替えなど「Kubernetes ならでは」の演習 |
 | 起動の速さ | 初回 数分、2 回目から 1 分ほど | 初回 10〜15 分、2 回目から数分 |
-| メモリの目安 | 約 2.5GB | 約 3GB |
+| メモリの目安 | 約 2.5GB | 約 3〜3.5GB |
 
 **まず軽量版で始めてください。** 本格版は、演習ページに「本格版では」と書いてあるときに使います。
 2 つの版は同じポート番号を使うので、**同時には動かせません**(片方を止めてからもう片方を起動します)。
@@ -42,10 +42,10 @@
 | API(api) | http://api.lab.localhost:18080 |
 | 管理画面(backoffice) | http://backoffice.lab.localhost:18080/backoffice/ |
 
-`www.lab.localhost` のように `.localhost` で終わる名前は、**Chrome・Edge・Firefox・curl では設定なしで** 自分の PC(127.0.0.1)になります。
+`www.lab.localhost` のように `.localhost` で終わる名前は、**Chrome・Edge・Firefox・curl(7.85 以降)では設定なしで** 自分の PC(127.0.0.1)になります。
 
 ::: tip Safari で開けないときは
-Safari など一部のブラウザは `*.localhost` を自動では解決しません。次の 1 行を `/etc/hosts`(Windows は `C:\Windows\System32\drivers\etc\hosts`)に足してください(管理者の権限が要ります)。
+Safari は名前の解決を OS に任せるので、macOS 26(Tahoe)より前の Mac では `*.localhost` を自動では解決しません(ほかにも同じようなブラウザがあります)。次の 1 行を `/etc/hosts`(Windows は `C:\Windows\System32\drivers\etc\hosts`)に足してください(管理者の権限が要ります)。
 
 ```
 127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost
@@ -127,7 +127,7 @@ api・worker には、遅くする・エラーを返す・メモリをため込�
 
 違いのポイント:
 
-- 本格版は api が 2 つ(Pod が 2 つ)動いています。`k8s/chaos.sh` は 2 つ全部に同じ指示を送ります。
+- 本格版は、既定の環境 p1(と s1)では api が 2 つ(Pod が 2 つ)動いています(d1 は 1 つ)。`k8s/chaos.sh` は動いている api の Pod 全部に同じ指示を送ります。
 - どちらの版も、対象が落ちて作り直されると、スイッチは「起動時の値」に戻ります。
   本格版で「何度も落ちる」様子(CrashLoopBackOff)を見るときは `boot` を使います。
 - **演習が終わったら、その演習の「片付け」でスイッチを必ず戻してください。** 戻し忘れると、次の演習の数字がずれます。
@@ -156,7 +156,7 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 
 ### `www.lab.localhost` が開けない
 
-- Chrome・Edge・Firefox・curl は設定なしで開けます。Safari など一部は、上の「`*.localhost` の名前について」の `/etc/hosts` の 1 行が要ります。
+- Chrome・Edge・Firefox・curl(7.85 以降)は設定なしで開けます。macOS 26 より前の Safari など一部は、上の「`*.localhost` の名前について」の `/etc/hosts` の 1 行が要ります。
 - `curl` で確かめるとき、`?` の入った URL は zsh(Mac の標準のシェル)では必ず `"..."` で囲みます(囲まないと `no matches found`)。
 
 ### 管理画面(backoffice)がこの PC からも 403 になる

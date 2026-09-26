@@ -43,7 +43,7 @@ async function tokenHandler(req, res) {
   const { rows } = await pool.query('SELECT id, uid, password_hash FROM users WHERE uid = $1', [body.username]);
   const user = rows[0];
   // 何度失敗してもロックはしません。ログインの回数制限は入口の ingress が受け持ちます
-  // (軽量版は ingress/default.conf.template の limit_req zone=login、本格版は Ingress api-ratelimit-1 の注釈 limit-rps。IP ごとに 1 秒 1 回・最初の 5 回はまとめて可)。
+  // (軽量版は ingress/default.conf.template の limit_req zone=login、本格版は Ingress api-ratelimit-1 の注釈 limit-rps。IP ごとに 1 秒 1 回・ため 5 回があるので続けて 6 回までは通る)。
   if (!user || !verifyPassword(body.password, user.password_hash)) {
     req.log.warn({ username: body.username, clientId: body.client_id }, 'ログイン失敗');
     return oauthError(res, 400, 'invalid_grant', '会員名かパスワードが違います');

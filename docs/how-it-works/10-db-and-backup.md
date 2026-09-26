@@ -200,7 +200,7 @@ docker compose start db
 tools/backup.sh
 # → バックアップを取りました: backups/store-20260926-101500.sql (… バイト)
 docker compose exec db psql -U store -d store -c "UPDATE products SET price = 1;"   # わざとの操作ミス
-time tools/restore.sh                                                               # real の時間 = 復元にかかった時間
+time tools/restore.sh                                                               # 最後の数字(zsh は total、bash は real)= 復元にかかった時間
 docker compose exec db psql -U store -d store -c "SELECT code, price FROM products ORDER BY code LIMIT 3;"
 ```
 
@@ -227,10 +227,10 @@ kubectl -n lab exec -i db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --singl
 
 | ラボ | CCv2 で当たるもの |
 | --- | --- |
-| PostgreSQL(db) | CCv2 が用意するデータベース(クラウドの管理された DB。PostgreSQL ではなく Azure SQL。利用者はサーバーを持たない) |
+| PostgreSQL(db) | CCv2 が用意するデータベース(クラウドの管理された DB。多くは Azure SQL で、環境によっては PostgreSQL のこともある。利用者はサーバーを持たない) |
 | 表を api の起動時に作る | デプロイのときの「DB の初期化・更新」(データを消して作り直す / DB を更新する / 何もしない、を選ぶ) |
 | `PG_POOL_MAX`・`connectionTimeoutMillis` | 接続プールの設定(プロパティで決める。台数 × 上限と、DB 側の上限を見比べるのは同じ) |
-| `tools/backup.sh`(`pg_dump`) | Cloud Portal のバックアップ(DB とメディアを、時刻付きの控えとして取る。Cloud Portal のバックアップは自分で取るもので、これとは別にクラウドの DB 自体も自動でバックアップを取っている) |
+| `tools/backup.sh`(`pg_dump`) | Cloud Portal のバックアップ(DB とメディアを、時刻付きの控えとして取る。Cloud Portal のバックアップは自分で取るもので、これとは別に、Azure SQL の場合は DB 自体もクラウド側で自動のバックアップが取られている) |
 | `tools/restore.sh` | Cloud Portal の復元(別の環境に戻すこともできる。戻す前に「何を失うか」を確かめる) |
 | RTO・RPO | SAP との契約・運用の取り決めと、案件の DR 設計で決める目標値 |
 | `/readyz` が DB を見る | CCv2 の aspect の準備確認(SAP 側の仕組み) |

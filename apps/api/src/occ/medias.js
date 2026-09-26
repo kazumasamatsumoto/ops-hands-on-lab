@@ -3,7 +3,7 @@
 //
 // 画像は変わらないので「1 日(86400 秒)まで手元や CDN に取っておいてよい」と Cache-Control で伝えます。
 // cdn-waf のキャッシュの演習で、画像が 2 回目から速くなる(HIT)のを見るのに使います。
-// (CCv2 では、画像などのメディアも api aspect の /medias/ から配り、CDN でキャッシュします)
+// (CCv2 でも、画像などのメディアは /medias/(mediaweb)から配ります。前に CDN を置けば、そこでキャッシュします)
 'use strict';
 
 const { pool } = require('../db');

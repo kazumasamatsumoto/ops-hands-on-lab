@@ -33,7 +33,7 @@ storefront は、注文履歴(`/my-account/orders`)の部品を「その画面�
 **予算は「機内持ち込みは 7kg まで」の決まり** です。量りに載せて超えていたら、その場で搭乗(リリース)できません。
 
 ::: tip CCv2 では
-Composable Storefront の案件でも、画面の機能(部品)を足すほど JS は太ります。CCv2 のビルドは storefront の `ng build` をそのまま動かすので、
+Composable Storefront の案件でも、画面の機能(部品)を足すほど JS は太ります。CCv2 のビルドは storefront の `package.json` の `build`(SSR なら `build:ssr`)を動かし、その中身はふつう `ng build` なので、
 `angular.json` の budgets で失敗すれば、Cloud Portal のビルドも失敗します(= 太った版は配られない)。予算は「ビルドの関所」として働きます。
 :::
 

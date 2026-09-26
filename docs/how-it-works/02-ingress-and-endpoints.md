@@ -226,7 +226,7 @@ docker compose up -d ingress
 ```bash
 kubectl -n lab get ingress                     # エンドポイントの一覧(HOSTS 欄にホスト名)
 kubectl -n lab describe ingress backoffice      # 注釈(IP フィルタ)と行き先
-kubectl kustomize k8s/generated/envs/d1 | grep -B3 allowlist-source-range   # d1 では www・api にも IP フィルタ
+kubectl kustomize k8s/generated/envs/d1 | grep -A8 allowlist-source-range | grep '^  name:'   # IP フィルタの付いた Ingress の名前。d1 では api・api-ratelimit-1・backoffice・www(p1 は backoffice だけ)
 
 # 社外の代わりのネットワーク lab-kind-outside(172.30.92.0/24)から → 403
 docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' \

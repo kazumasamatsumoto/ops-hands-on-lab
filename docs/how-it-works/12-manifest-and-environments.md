@@ -86,7 +86,7 @@ title: 仕組み-12 manifest と環境(d1・s1・p1)
 | `images.platform` | `image: "lab/api:local"` | 3 つの aspect に共通のイメージ |
 | `tracing.otlpEndpoint` | `env: OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` | トレースの送り先(本格版だけ。[仕組み-11](./11-observability)) |
 
-どの Deployment にも、決まった形で `readinessProbe`・`livenessProbe`・`RollingUpdate(maxUnavailable: 0, maxSurge: 1)` が付きます。これは manifest に書かず、render.mjs が「この会社の決まり」として描き足す部分です。
+どの Deployment にも、決まった形で `startupProbe`・`readinessProbe`・`livenessProbe`・`RollingUpdate(maxUnavailable: 0, maxSurge: 1)` が付きます。これは manifest に書かず、render.mjs が「この会社の決まり」として描き足す部分です。
 
 ### 3.2 エンドポイント 1 つぶん {#s3-2}
 

@@ -18,7 +18,7 @@
 ## 2. 前提 {#s2}
 | 前提 | 内容 |
 | --- | --- |
-| PC | Docker Desktop にメモリ 8GB。軽量版は上限の合計 約 2.5GB、本格版は およそ 3GB(検証で測った値。kind のノード 約 3.0GB + クラスタの外の cdn-waf 60〜80MB。内訳は [k8s/README.md](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/README.md) の「使うメモリ」) |
+| PC | Docker Desktop にメモリ 8GB。軽量版は上限の合計 約 2.5GB、本格版は およそ 3〜3.5GB(検証で測った値。kind のノード 約 3.0〜3.3GiB + クラスタの外の cdn-waf 50〜80MB。内訳は [k8s/README.md](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/README.md) の「使うメモリ」) |
 | 同時起動 | 軽量版と本格版は同じポート(18080・13000・19090・19093・19094)を使うので、同時には動かせない |
 | イメージ | 公開イメージだけを使い、タグを固定する。自分で作るのは `lab/web:local`(storefront)と `lab/api:local`(api・backoffice・worker)の 2 つ |
 | 本格版の起動 | `LAB_ENV=d1\|s1\|p1 k8s/up.sh`(既定 p1)。環境を切り替えるだけなら `LAB_SKIP_BUILD=1` を付けてイメージのビルドを飛ばす。止めるのは `k8s/down.sh`(クラスタと cdn-waf のコンテナを消す) |

@@ -35,7 +35,7 @@ storefront には、`SSR_WINDOW_BUG=true` にすると **「ブラウザかど�
 家で試している限りは絶対に気づけません。「屋外でも使うなら電池でも動くように作る」という決まりが要ります。
 
 ::: tip CCv2 では
-Composable Storefront を SSR で動かすときも、まったく同じ決まりがあります。SSR のサーバーで例外が続くと、JS Storefront の Pod は生きているのに画面が 500 になります。
+Composable Storefront を SSR で動かすときも、まったく同じ決まりがあります。SSR のエラー処理が有効な設定(新しく作ったアプリの既定)では、SSR のサーバーで例外が続くと、JS Storefront の Pod は生きているのに画面がエラー(500 など)になります(エラー処理が無い古い設定では、壊れた HTML が 200 で返ることもあり、なおさら気づきにくくなります)。
 CCv2 の見張り(Dynatrace)では「storefront の 5xx の割合」で気づくように設定します。このラボでは Prometheus と pager がその役です。
 :::
 
@@ -117,9 +117,9 @@ ssr_errors_total{job="storefront"}           25
 job:ssr_errors:rate5m{job="storefront"}      0.0837      ← 1 秒あたり約 0.08 件の SSR エラー
 
 Alerts:  SSRErrors (storefront) firing / ErrorBudgetBurnPage (storefront) firing
-pager:   15:08:42 firing ErrorBudgetBurnDemo storefront
-         15:09:42 firing ErrorBudgetBurnPage storefront
-         (SSRErrors は Alertmanager で suppressed。ErrorBudgetBurnPage より先に届いた回は、pager に firing SSRErrors も並びます)
+pager:   15:08:42 発生中 ErrorBudgetBurnDemo storefront
+         15:09:42 発生中 ErrorBudgetBurnPage storefront
+         (SSRErrors は Alertmanager で suppressed。ErrorBudgetBurnPage より先に届いた回は、pager に「発生中 SSRErrors」も並びます)
 ```
 
 いちばん早く届く `ErrorBudgetBurnDemo` は演習用の「早く鳴る」アラートです([SRE-2](./10-sre-burn-rate-alert) で詳しく見ます)。

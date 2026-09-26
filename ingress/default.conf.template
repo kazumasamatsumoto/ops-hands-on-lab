@@ -10,8 +10,8 @@
 #   ここではキャッシュも WAF もしません。やるのは次の 4 つだけです。
 #     1. ホスト名で行き先を決める   www → storefront、api → api、backoffice → backoffice
 #     2. IP フィルタ               backoffice は社内(BACKOFFICE_IP_ALLOWLIST)からだけ
-#     3. 中の人だけが使う口を閉じる  /admin/・/metrics・/readyz は外から 403
-#     4. ログインの回数制限         api の /authorizationserver/oauth/token は IP ごとに 1 秒 1 回(最初の 5 回はまとめて可)
+#     3. 中の人だけが使う口を閉じる  /admin/・/metrics・/readyz は外から 403(www は /metrics だけ。storefront にはほかの 2 つが無いため)
+#     4. ログインの回数制限         api の /authorizationserver/oauth/token は IP ごとに 1 秒 1 回(ため 5 回があるので、続けて 6 回までは通る)
 #
 # ■ このファイルは起動時に envsubst で ${...} の部分が環境変数に置き換わります(docker-compose.yml の ingress の environment)。
 
@@ -102,7 +102,7 @@ server {
   location = /metrics  { deny all; }
   location = /readyz   { deny all; }
 
-  # ログイン(トークンの発行)。IP ごとに 1 秒 1 回、最初の 5 回はまとめて通します(burst=5)。超えたら 429。
+  # ログイン(トークンの発行)。IP ごとに 1 秒 1 回。ため(burst=5)があるので、続けて 6 回(1 回 + ため 5 回)までは通します。超えたら 429。
   location = /authorizationserver/oauth/token {
     limit_req zone=login burst=5 nodelay;
     proxy_pass $backend;

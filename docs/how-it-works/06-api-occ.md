@@ -220,6 +220,7 @@ curl -sI -H 'Origin: http://www.lab.localhost:18080' \
   http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | grep -iE 'access-control|vary'
 # → Vary: Origin
 #   Access-Control-Allow-Origin: http://www.lab.localhost:18080
+#   Access-Control-Expose-Headers: X-Search-Provider
 
 # CORS: 知らないオリジン → Access-Control-Allow-Origin が付かない(ブラウザは JS に渡さない)
 curl -sI -H 'Origin: http://evil.example' \

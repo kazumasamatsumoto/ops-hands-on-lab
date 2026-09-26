@@ -268,13 +268,15 @@ curl -s 'http://localhost:19090/api/v1/query?query=up' | python3 -c 'import sys,
 curl -s 'http://localhost:19090/api/v1/query?query=job:sli_success:ratio_rate5m' | python3 -m json.tool | head -20
 
 # アラートを鳴らす: api の半分を 500 に → 1〜2 分で pager に ErrorBudgetBurnDemo と ErrorBudgetBurnPage
+#   (Page は「1 時間窓」も見ます。直前 1 時間に負荷試験などで成功の記録がたくさんあると、割合が薄まって Page は鳴りません。
+#    そのときは SRE-2 の手順 1 のとおり Prometheus をまっさらにしてから試します)
 tools/chaos.sh set errorRate=0.5
 tools/k6.sh browse.js -e DURATION=3m -e PAGES=0
 curl -s http://localhost:19093/api/v2/alerts | python3 -c 'import sys,json; [print(a["labels"]["alertname"], a["labels"].get("job"), a["status"]["state"]) for a in json.load(sys.stdin)]'
 tools/chaos.sh reset
 ```
 
-**Grafana でログを探す**(http://localhost:13000 → 左のメニューの Explore → データソース Loki)
+**Grafana でログを探す**(http://localhost:13000 → 右上の「サインイン」から `admin` / `admin` でログイン → 左のメニューの Explore(日本語の表示では「探検」)→ データソース Loki。ログインしないままだと、メニューに Explore が出ません)
 
 ```text
 {service="api"} | json | status >= 500                  … api の 500 の行だけ

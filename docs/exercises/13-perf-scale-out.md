@@ -31,7 +31,7 @@ title: 性能-2 台数を増やして耐える
 サンプルストアの storefront は、ログインの印をブラウザ側(sessionStorage)に持つので、どの台に当たってもかまいません。
 
 ::: tip CCv2 では
-CCv2 では、aspect の台数は manifest.json と環境(d1/s1/p1)で決めます。本番(p1)は storefront・api を 2 台ずつにしています。
+CCv2 では、aspect の台数は manifest.json ではなく、Cloud Portal の環境ごとの設定で決まります(本番の台数は SAP が見積もって管理します)。このラボでは manifest.json の環境(d1/s1/p1)で決め、本番(p1)は storefront・api を 2 台ずつにしています。
 台数を増やしても効くのは、状態をアプリの外(ブラウザ・DB)に持っているからです。負荷に応じて自動で台数を変える仕組み(HPA)は、CPU の使用量を集める部品が別に要ります(このラボの本格版には入れていません。理由は `k8s/README.md`)。
 :::
 

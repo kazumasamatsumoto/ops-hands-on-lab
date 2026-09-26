@@ -201,20 +201,22 @@ spec:
 kubectl -n lab get pods
 ```
 
-期待する出力の形(名前の後ろの英数字は毎回変わります):
+期待する出力の形(名前の後ろの英数字は毎回変わります。並びは名前の順で、観測の道具の行は省いています):
 
 ```text
-NAME                          READY   STATUS    RESTARTS   AGE
-api-6d5f7c9b8d-2xkqp          1/1     Running   0          3m
-api-6d5f7c9b8d-9tq7w          1/1     Running   0          3m
-backoffice-7b9c6d5f4-kx2mz    1/1     Running   0          3m
-storefront-5c8d7f6b9-h4jlp    1/1     Running   0          3m
-storefront-5c8d7f6b9-w8r2n    1/1     Running   0          3m
-worker-6f7d8c9b5-q5v8t        1/1     Running   0          3m
-db-0                          1/1     Running   0          4m
-search-5d9c8b7f6-m2x7c        1/1     Running   0          4m
-...(観測の道具: prometheus・alertmanager・pager・grafana・loki・alloy・otel-collector・tempo)
+NAME                          READY   STATUS    RESTARTS      AGE
+api-6d5f7c9b8d-2xkqp          1/1     Running   1 (2m ago)    3m
+api-6d5f7c9b8d-9tq7w          1/1     Running   1 (2m ago)    3m
+backoffice-7b9c6d5f4-kx2mz    1/1     Running   1 (2m ago)    3m
+db-0                          1/1     Running   0             3m
+search-5d9c8b7f6-m2x7c        1/1     Running   0             3m
+storefront-5c8d7f6b9-h4jlp    1/1     Running   0             3m
+storefront-5c8d7f6b9-w8r2n    1/1     Running   0             3m
+worker-6f7d8c9b5-q5v8t        1/1     Running   1 (2m ago)    3m
+...(このほか観測の道具: alertmanager・alloy・grafana・loki・otel-collector・pager・prometheus・tempo)
 ```
+
+- クラスタを作った直後は、api・backoffice・worker の `RESTARTS` が `1` になることがあります。ノードが DB のイメージを取ってくる間、api などは 2 秒ごとに DB を 60 回(約 2 分)待ち、それでもつながらないと一度止まって作り直されるためです。作り直したあとは DB につながり、`1/1` になります。
 
 - `db-0` のように後ろが番号だけなのは StatefulSet(DB のように「決まった名前とデータの置き場所」を持ち続ける物)の Pod です。ほかは Deployment の Pod です。
 

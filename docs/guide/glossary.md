@@ -131,7 +131,7 @@
 - **ラボで見られる場所**: 環境変数 `ASPECT=api|backoffice|backgroundProcessing`([main.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/main.js))。CCv2 の aspect に当たる。
 
 ### backgroundProcessing {#background-processing}
-- **一言でいうと**: お客さん向けの画面や API を受け持たず、裏の仕事(定期ジョブ)を受け持つ aspect。ラボの worker は定期ジョブだけですが、CCv2 ではここで管理用の画面(hAC)も動きます。
+- **一言でいうと**: お客さん向けの画面や API を受け持たず、裏の仕事(定期ジョブ)を受け持つ aspect。ラボの worker は定期ジョブだけですが、CCv2 では既定の設定で、ここ(と backoffice の aspect)で管理用の画面(hAC)も動きます。
 - **たとえ**: お店の奥の倉庫係。お客さんには会わないが、在庫の数を毎日合わせている。
 - **ラボで見られる場所**: worker(`ASPECT=backgroundProcessing`)。入口(エンドポイント)を持たず外には出しません。Prometheus が中から `/metrics` を集めるだけです。
 
@@ -313,7 +313,7 @@
 ### 公開クライアント {#public-client}
 - **一言でいうと**: 秘密の鍵(client_secret)を持たない OAuth のクライアント。ブラウザで動くアプリは中身を誰でも見られるので、秘密を持てない。
 - **たとえ**: 誰でも読める掲示板に貼った申込書。合言葉は書けない。
-- **ラボで見られる場所**: `client_id=storefront`(ほかのクライアントは 401 `invalid_client`)。ラボは公開クライアントでパスワードグラントを受けていますが、実際の SAP Commerce Cloud では公開クライアントは「認可コード + PKCE」でしかトークンをもらえません([パスワードグラント](#password-grant)の注意)。
+- **ラボで見られる場所**: `client_id=storefront`(ほかのクライアントは 401 `invalid_client`)。ラボは公開クライアントでパスワードグラントを受けていますが、実際の SAP Commerce Cloud の新しい認可サーバー(JDK 21 の版)では、公開クライアントが最初にトークンをもらう方法は「認可コード + PKCE」だけで(そのあとの取り直しに更新トークンは使えます)、パスワードグラントは使えません([パスワードグラント](#password-grant)の注意)。
 
 ### アクセストークン {#access-token}
 - **一言でいうと**: API を呼ぶときに見せる「入ってよい」の印。期限がある。`Authorization: Bearer <トークン>` の形で付ける。

@@ -49,7 +49,7 @@ k6 ──▶ api:3001 / storefront:4000 に直接(API_URL・WWW_URL)… アプ�
 ### 4.3 最初に読む JS を抑える {#s4-3}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | initial の予算は 400kB で警告、450kB でビルド失敗(今は約 320kB)。注文履歴は遅延読み込み。JS・CSS はファイル名に中身のハッシュが入るので、storefront が 1 年キャッシュしてよいと返す。SSR で取った JSON は TransferState で申し送り、最初の表示で api を呼び直さない |
+| 決定 | initial の予算は 400kB で警告、450kB でビルド失敗(今は約 336kB)。注文履歴は遅延読み込み。JS・CSS はファイル名に中身のハッシュが入るので、storefront が 1 年キャッシュしてよいと返す。SSR で取った JSON は TransferState で申し送り、最初の表示で api を呼び直さない |
 | 理由 | スマホでは、JS の大きさがそのまま表示の遅さになる。同じ JSON を 2 回取るのは無駄 |
 | 実物 | [angular.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/angular.json)・[server.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server.ts)・[api.service.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/core/api.service.ts) |
 

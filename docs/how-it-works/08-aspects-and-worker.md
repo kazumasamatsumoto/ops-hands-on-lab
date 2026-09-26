@@ -183,6 +183,7 @@ docker compose exec worker curl -s http://127.0.0.1:3001/metrics | grep -E '^cro
 # → cronjob_runs_total{job="stockImportJob",result="success"} 12
 #   cronjob_runs_total{job="stockImportJob",result="failure"} 0
 #   cronjob_last_success_timestamp_seconds{job="stockImportJob"} 1790000000.123
+#   (searchIndexJob の 3 行も同じ形で並びます)
 
 # worker には入口(ホスト名)が無い → cdn-waf が「このホスト名は使っていません」の 404
 curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: worker.lab.localhost' http://www.lab.localhost:18080/

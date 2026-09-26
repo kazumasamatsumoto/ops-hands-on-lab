@@ -91,7 +91,7 @@ backoffice でバナーの文言を変えると、storefront を作り直さな�
   - 商品・CMS の GET と、ログインの POST(`application/x-www-form-urlencoded`)は「単純なリクエスト」なので、そのまま 1 回で送ります。
   - 注文(`/users/current/...`)は `Authorization: Bearer ...` を付けるので、先に `OPTIONS`(プリフライト)で「送ってよいか」を確かめます。
     api は `Access-Control-Allow-Headers: Authorization` を返す必要があります。
-  - `Authorization` は `/users/` の下にだけ付けます(商品に付けると、キャッシュが効かず、毎回プリフライトが飛ぶため)。
+  - `Authorization` は `/users/` の下にだけ付けます(商品に付けると、キャッシュが効かず、商品の URL ごとにプリフライトが飛ぶため)。
 - **外向きの住所の渡し方**: `API_PUBLIC_URL` は JS に焼き込みません(同じイメージを d1・s1・p1 で使うため)。
   `server.ts` が返す HTML の `<head>` に `<meta name="api-public-url" content="http://api.lab.localhost:18080">` を書き足し、
   ブラウザはそれを読みます(`src/app/core/tokens.ts`)。SSR・CSR・フォールバックのどの HTML にも入ります。

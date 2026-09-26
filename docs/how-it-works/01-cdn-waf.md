@@ -175,7 +175,7 @@ WAF の本体の設定はイメージの中にあり、強さは環境変数で�
 # キャッシュ: 同じ URL を 2 回。1 回目 MISS、2 回目 HIT(30 秒で切れる)
 curl -sI http://www.lab.localhost:18080/p/100001 | grep -i x-cache
 curl -sI http://www.lab.localhost:18080/p/100001 | grep -i x-cache
-# → X-Cache-Status: MISS
+# → X-Cache-Status: MISS(前にためた物が期限切れで残っていれば EXPIRED)
 # → X-Cache-Status: HIT
 
 # ログイン中らしい(Authorization あり)なら、ためた物を使わない

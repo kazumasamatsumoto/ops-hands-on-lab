@@ -158,11 +158,11 @@ restarts=1
 ```text
 lab-api-1 Restarting (137) 40 seconds ago
 restarts=10 exit=137 oom=true
-11            ← 「起動しました」のログが 11 回(最初の起動 1 回 + 再起動 10 回)
+10            ← 「起動しました」のログが 10 回(最初の起動 1 回 + 起動し直せた 9 回。10 回目の起動はまだ待っているところ)
 ```
 
 見るタイミングによっては、ちょうど起動し直した直後で `Up 1 second (health: starting)`・`exit=0 oom=false` と出ます(起動し直すと、前回の終わり方の記録が消えるためです)。
-そのときも `restarts=10` の数と「起動しました」の回数は残っているので、「何度も落ちている」ことが分かります。
+そのときは「起動しました」が 11 回になります。どちらのときも `restarts=10` の数と「起動しました」の回数は残っているので、「何度も落ちている」ことが分かります。
 
 **本格版**: Pod の STATUS が `OOMKilled` → `CrashLoopBackOff` と変わり、`RESTARTS` の数が増えていきます。`describe` の `Last State` に `Reason: OOMKilled`、`Exit Code: 137` が出ます。
 

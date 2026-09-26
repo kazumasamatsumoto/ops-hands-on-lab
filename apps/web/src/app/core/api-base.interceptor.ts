@@ -14,7 +14,7 @@ import { AuthService } from './auth.service';
  * 2. ログイン中なら Authorization: Bearer <トークン> を付ける(/users/ の下だけ)
  *    商品や CMS のように誰が見ても同じものには付けません。付けると
  *      - cdn-waf がキャッシュしなくなる(人ごとのデータかもしれないため)
- *      - ブラウザが本番の前に「送ってよいか」の確認(CORS のプリフライト = OPTIONS)を毎回するようになる
+ *      - ブラウザが本番の前に「送ってよいか」の確認(CORS のプリフライト = OPTIONS)をするようになる(同じ URL なら 10 分は覚えておくが、商品ごとに URL が違う)
  *    ためです。
  *
  * 3. (サーバーだけ・OpenTelemetry が有効なときだけ)traceparent ヘッダを付ける

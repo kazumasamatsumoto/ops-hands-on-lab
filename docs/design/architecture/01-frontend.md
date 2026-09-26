@@ -3,7 +3,7 @@
 版: 2.0 / 親: [全体方式](/design/architecture/00-overall) / 対象: storefront(Angular 21 SSR。CCv2 の JS Storefront に当たる)
 
 ::: tip 3 行まとめ(この文書で決めたこと)
-- 画面は毎回サーバーで作る(SSR)。トップと商品詳細は、api の CMS の JSON(`cms/pages`)の部品の種類(`typeCode`)を見て Angular の部品を並べる「CMS 駆動の描画」にする。
+- 画面は毎回サーバーで作る(SSR)。トップ・商品詳細・分類ページは、api の CMS の JSON(`cms/pages`)の部品の種類(`typeCode`)を見て Angular の部品を並べる「CMS 駆動の描画」にする。
 - SSR は 3000ms で打ち切り、間に合わなければ空の HTML を返してブラウザに任せる(真っ白にしない)。api の住所は SSR 中は中の近道、ブラウザからは別オリジンの `http://api.lab.localhost:18080`。
 - 最初に読む JS・CSS は 450kB を超えたらビルドを失敗させる。注文履歴は後から読み込む。
 :::
@@ -93,7 +93,7 @@
 ### 4.6 CMS 駆動の描画(ヘッドレス) {#s4-6}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | トップと商品詳細は、URL からページ(`pageType` と `pageLabelOrId` / `code`)を決め、`GET /occ/v2/samplestore/cms/pages` の JSON を取る。スロット(`contentSlots.contentSlot[]`)を返ってきた順に並べ、中の部品は `typeCode` を**対応表 1 か所**(`cms-mapping.ts`)で引いて Angular の部品を当てはめる(`SimpleBannerComponent`・`CMSParagraphComponent`・`ProductCarouselComponent`・`ProductDetailsComponent`・`SearchBoxComponent`・`NavigationComponent` の 6 種類)。表に無い `typeCode` は描かずに飛ばし、ログに `cms_unknown_component` を出す(画面は落とさない) |
+| 決定 | トップ・商品詳細・分類ページは、URL からページ(`pageType` と `pageLabelOrId` / `code`)を決め、`GET /occ/v2/samplestore/cms/pages` の JSON を取る。スロット(`contentSlots.contentSlot[]`)を返ってきた順に並べ、中の部品は `typeCode` を**対応表 1 か所**(`cms-mapping.ts`)で引いて Angular の部品を当てはめる(`SimpleBannerComponent`・`CMSParagraphComponent`・`ProductCarouselComponent`・`ProductDetailsComponent`・`SearchBoxComponent`・`NavigationComponent` の 6 種類)。表に無い `typeCode` は描かずに飛ばし、ログに `cms_unknown_component` を出す(画面は落とさない) |
 | 理由 | 「どこに・何を置くか」をコードではなく CMS のデータで決められる。backoffice でバナーの文言を変えると、storefront を作り直さずにトップが変わる。部品を増やすときは Angular の部品を 1 つ作り、対応表に 1 行足すだけ。CMS 側に新しい部品が先に置かれても、サイトは止まらない |
 | 却下した案 | 画面ごとに並びをコードに書く: 文言やバナーの差し替えのたびにリリースが要る。知らない部品で例外にする: CMS の更新 1 つで全画面が 500 になる |
 | 実物 | [cms-mapping.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-mapping.ts)・[cms-page.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-page.ts)・[cms-route.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-route.ts)。詳細は [D-FE-05](/design/detail/D-FE-05-headless-cms) |
@@ -113,7 +113,7 @@
 | フォールバック率 | 5 分間で 5% 以下(超えて 1 分続けば警告) | `job:ssr_fallback:ratio_rate5m`。計算式 = フォールバック回数 ÷ SSR を試みた回数 |
 | SSR のエラー | 0 件(1 件でも 1 分続けば警告) | `job:ssr_errors:rate5m` |
 | 知らない CMS 部品 | 0 件(出たら対応表の追加漏れ) | ログの `cms_unknown_component` |
-| 最初に読む JS・CSS | 450kB 以下(ビルドで強制。今は約 320kB) | `ng build` の結果 |
+| 最初に読む JS・CSS | 450kB 以下(ビルドで強制。今は約 336kB) | `ng build` の結果 |
 
 ## 6. 配下の詳細設計書 {#s6}
 - [D-FE-04 商品詳細画面](/design/detail/D-FE-04-product-detail)

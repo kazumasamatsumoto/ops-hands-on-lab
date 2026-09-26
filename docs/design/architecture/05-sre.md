@@ -24,7 +24,7 @@ CCv2 の案件では、指標とトレースは APM の道具、ログはログ�
 | 収集 | Prometheus が storefront:4000・api:3001・backoffice:3001・worker:3001 の `/metrics` を 5 秒ごとに**中から直接**集める(`/metrics` は ingress で外から閉じている)。本番は 15〜60 秒が多い |
 | 保存 | 指標は 31 日(`--storage.tsdb.retention.time=31d`)、ログは 7 日(168 時間)で消す |
 | 通知 | 外部には送らない。pager(ポート 19094)が受けて画面に並べる |
-| トレース | `OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ送る。軽量版は設定していないので送らない。本格版は全部の Deployment に `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` を付け、OpenTelemetry Collector(`otel/opentelemetry-collector:0.161.0`)→ Tempo(`grafana/tempo:2.10.8`、24 時間で消す)に集める |
+| トレース | `OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ送る。軽量版は設定していないので送らない。本格版はアプリの 4 つの Deployment(storefront・api・backoffice・worker)に `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` を付け、OpenTelemetry Collector(`otel/opentelemetry-collector:0.161.0`)→ Tempo(`grafana/tempo:2.10.8`、24 時間で消す)に集める |
 
 ## 3. 全体像 {#s3}
 ```text
@@ -100,7 +100,7 @@ Grafana ◀── Prometheus・Loki(本格版は + Tempo)(ダッシュボード�
 ### 4.9 トレース(1 リクエストを追う) {#s4-9}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | OpenTelemetry を使い、`OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ OTLP/HTTP で送る(無ければ何もしない)。storefront は受けたリクエスト → `ssr.render` → api への呼び出しを区間(スパン)にし、`traceparent` を api に渡す。api は http・express・pg と Solr への問い合わせを自動で計測し、worker はジョブ 1 回を 1 本の道筋にする。本格版は manifest.json の `tracing.otlpEndpoint`(`http://otel-collector:4318`)を全 Deployment に付け、OpenTelemetry Collector → Tempo に集める。Grafana の Loki のデータソースに derived field を置き、ログの `"trace_id":"…"` から「Tempo で道筋を見る」に飛べるようにする(正規表現 `"trace_id":"([0-9a-f]{32})"`。[k8s/config/grafana-datasources.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/config/grafana-datasources.yml))。逆向き(道筋 → 同じ trace_id のログ)も Tempo のデータソースの `tracesToLogsV2` でつなぐ |
+| 決定 | OpenTelemetry を使い、`OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ OTLP/HTTP で送る(無ければ何もしない)。storefront は受けたリクエスト → `ssr.render` → api への呼び出しを区間(スパン)にし、`traceparent` を api に渡す。api は http・express・pg と Solr への問い合わせを自動で計測し、worker はジョブ 1 回を 1 本の道筋にする。本格版は manifest.json の `tracing.otlpEndpoint`(`http://otel-collector:4318`)をアプリの 4 つの Deployment に付け、OpenTelemetry Collector → Tempo に集める。Grafana の Loki のデータソースに derived field を置き、ログの `"trace_id":"…"` から「Tempo で道筋を見る」に飛べるようにする(正規表現 `"trace_id":"([0-9a-f]{32})"`。[k8s/config/grafana-datasources.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/config/grafana-datasources.yml))。逆向き(道筋 → 同じ trace_id のログ)も Tempo のデータソースの `tracesToLogsV2` でつなぐ |
 | 理由 | 指標は「どこかが遅い」、ログは「この部品で何が起きた」までしか分からない。トレースなら 1 回のクリックが storefront → api → DB のどこで時間を使ったかが 1 本の線で見える |
 | 却下した案 | 全部の版で常に送る: 軽量版のメモリ(約 2.5GB)を超える。ログの時刻だけで突き合わせる: 同時に何本も動いていると、どれが同じリクエストか分からない |
 | 実物 | [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json)(`tracing`)・[k8s/observability/traces.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/observability/traces.yaml)・[k8s/config/grafana-datasources.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/config/grafana-datasources.yml)・[apps/api/src/otel.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/otel.js)・[apps/web/src/server/otel.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server/otel.ts)・[apps/web/src/server.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server.ts) |

@@ -18,7 +18,7 @@ Kubernetes は kind(Kubernetes IN Docker = Docker のコンテナの中で動く
 
 | もの | 目安・入れ方 |
 | --- | --- |
-| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3GB ほど使います。下の「使うメモリ」) |
+| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3〜3.5GB ほど使います。下の「使うメモリ」) |
 | kind | `brew install kind`(Mac)。v0.30 以上 |
 | kubectl | `brew install kubectl`(Docker Desktop に付いてくる物でも可) |
 | Node.js | 24 以上(`tools/manifest/render.mjs` を動かすため) |
@@ -298,7 +298,7 @@ Grafana(http://localhost:13000)のダッシュボード **「サンプルスト�
 「選んだ道筋」に、storefront が受けたリクエスト → storefront から api への呼び出し → api が受けたリクエスト → DB(pg)への問い合わせ、
 が段になって並びます。「この道筋のログ」には、同じ `trace_id` のログが並びます。
 
-Explore から見る方法:
+Explore から見る方法(右上の「サインイン」から `admin` / `admin` でログインし、左のメニューの Explore(日本語の表示では「探検」)を開きます。ログインしないままだと、メニューに Explore が出ません):
 
 - **Tempo** を選び、TraceQL に `{resource.service.name="samplestore-storefront" && kind=server}` → 一覧の Trace ID を押す
 - **Loki** を選び、`{service="api"} |= "trace_id"` → ログの行を開き、`trace_id` の横の **Tempo で道筋を見る** を押す(derived field)
@@ -359,8 +359,8 @@ k8s/chaos.sh boot-reset              # 起動時の値を戻す
 | アプリ(storefront ×2・api ×2・backoffice・worker) | 250〜300MB(leakMb の演習中は api が上限 256Mi まで増える) |
 | db(PostgreSQL)・search(Solr。Java のヒープ 256MB) | 500MB |
 | 観測(Grafana・Tempo・Loki・Alloy・Prometheus・otel-collector・Alertmanager・pager) | 950MB |
-| cdn-waf(クラスタの外) | 60〜80MB |
-| **合計** | **およそ 3GB**(ノード 3.0GB + cdn-waf。Docker Desktop 8GB で余裕があります) |
+| cdn-waf(クラスタの外) | 50〜80MB |
+| **合計** | **およそ 3〜3.5GB**(docker stats で見たノード 3.0〜3.3GiB + cdn-waf。Docker Desktop 8GB で余裕があります) |
 
 Pod ごとの予約(requests)と上限(limits)は `kubectl -n lab describe node | grep -A30 'Allocated resources'` で見られます。
 

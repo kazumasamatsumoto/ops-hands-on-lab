@@ -93,7 +93,7 @@ storefront は、CCv2 の **JS Storefront**(Composable Storefront を SSR で動
 **SSR のとき(手順 1)**: 応答ヘッダが `X-Render-Mode: ssr`、HTML に商品名と CMS の部品(`data-cms-type`)がそのまま入っています。
 
 ```text
-Content-Length: 21514
+Content-Length: 21525
 X-Render-Mode: ssr
 X-Cache-Status: MISS
 <h1>ノート A5 方眼
@@ -103,6 +103,8 @@ X-Cache-Status: MISS
    1 data-cms-type="ProductDetailsComponent"
    1 data-cms-type="SearchBoxComponent"
 ```
+
+(`Content-Length` は 21,500 前後です。HTML には在庫の数も入っていて、worker の定期ジョブが在庫を 1 分ごとに少し動かすので、数十バイト変わることがあります。)
 
 **CSR のとき(手順 4)**: `X-Render-Mode: csr`、HTML はわずか 1,300 バイトで、CMS の部品は 0 個。中身は「読み込み中…」だけです。
 
@@ -127,7 +129,7 @@ Cache-Control: no-store
 
 | モード | 画面下の表示 | ソースに商品名 | HTML の大きさ | TTFB(実測の例) |
 | --- | --- | --- | --- | --- |
-| SSR | 描画モード: SSR(サーバーで描画) | ある | 21,514 バイト | 0.03〜0.05 秒(キャッシュ無し)/ 0.006 秒(キャッシュ HIT) |
+| SSR | 描画モード: SSR(サーバーで描画) | ある | 約 21,500 バイト | 0.03〜0.05 秒(キャッシュ無し)/ 0.006 秒(キャッシュ HIT) |
 | CSR | 描画モード: CSR(ブラウザで描画) | ない | 1,300 バイト | 0.007〜0.009 秒 |
 
 CSR の方が「最初の 1 バイト」は速いのに、利用者が商品を見られるのは、JS(約 336kB)を読み込み、さらにブラウザが api(`http://api.lab.localhost:18080`)から CMS の JSON と商品を取ってきた **後** です。

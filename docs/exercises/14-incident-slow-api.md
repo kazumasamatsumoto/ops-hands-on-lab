@@ -29,7 +29,7 @@ storefront は、SSR(サーバーで画面を組み立てる)を **3 秒(`SSR_TI
 画面はブラウザが続きを組み立てます(api が遅いので、そのぶん遅れて出ます)。このとき応答ヘッダは `X-Render-Mode: fallback` になり、ログに `ssr_fallback`、指標 `ssr_fallback_total` が 1 増えます。
 フォールバックの割合が 5 分間で 5% を超えると、アラート `SSRFallbackRatioHigh` が鳴ります。
 
-演習では、api の全部の返事に 4 秒の遅れを足し(`latencyMs=4000`)、この一連の動きを見ます。
+演習では、api の OCC の API(商品・CMS・注文)とトークンの返事に 4 秒の遅れを足し(`latencyMs=4000`)、この一連の動きを見ます。
 
 たとえ: **仕出し弁当の店** です。お客様(ブラウザ)に「完成したお弁当」(SSR)を出したいのですが、おかずの仕入れ先(api)が遅れています。
 3 秒待っても届かなければ、「ご飯だけ先にお渡しして、おかずは届き次第お席にお持ちします」(フォールバック)に切り替えます。
@@ -123,7 +123,7 @@ api: status=200 total=4.020010s
 +232s ratio=0.979 SSRFallbackRatioHigh=pending
 +272s SSRFallbackRatioHigh storefront firing
 
-pager: firing SSRFallbackRatioHigh | storefront: SSR のフォールバック率が 5% を超えています | 直近 5 分のフォールバック率: 98.72%。API の遅延(latencyMs)を疑ってください。
+pager: 発生中 SSRFallbackRatioHigh | storefront: SSR のフォールバック率が 5% を超えています | 直近 5 分のフォールバック率: 98.72%。API の遅延(latencyMs)を疑ってください。
 ```
 
 **手順 6**: 逃げ道を 10 秒に延ばすと、画面は SSR のまま 8.3 秒かかりました。1 人なら「遅い」で済みますが、大勢が来ると、画面を作る係が全員 8 秒ずつふさがります。

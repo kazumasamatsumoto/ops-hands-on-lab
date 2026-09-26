@@ -206,7 +206,7 @@ port_of() {
 }
 cat <<MSG
 
-準備ができました(環境 ${LAB_ENV}: $($K -n "$NS" get configmap lab-environment -o jsonpath='キャッシュ {.data.EDGE_CACHE}・検索 {.data.SEARCH_PROVIDER}'))。
+準備ができました(環境 ${LAB_ENV}: キャッシュ ${EDGE_CACHE:-$EDGE_CACHE_ENV}・検索 $($K -n "$NS" get configmap lab-environment -o jsonpath='{.data.SEARCH_PROVIDER}'))。
   お店(storefront)   http://www.lab.localhost:${HTTP_PORT}
   API               http://api.lab.localhost:${HTTP_PORT}/occ/v2/samplestore/products/search?query=ノート
   管理画面          http://backoffice.lab.localhost:${HTTP_PORT}/backoffice/   (admin / admin。社内の IP だけ)

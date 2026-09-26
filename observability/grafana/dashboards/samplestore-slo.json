@@ -99,7 +99,7 @@
     {
       "type": "stat",
       "title": "p95 応答時間(直近 5 分)",
-      "description": "100 件のうち遅い方から 5 件目の速さ。",
+      "description": "100 件を速い順に並べたとき 95 件目の速さ。",
       "id": 3,
       "datasource": {
         "type": "prometheus",

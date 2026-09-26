@@ -39,7 +39,7 @@ ingress は、ホスト名を見て 3 つの窓口(エンドポイント)に振�
 - `api.lab.localhost` → api(OCC の REST・OAuth・画像。誰でも。ログインだけ回数制限)
 - `backoffice.lab.localhost` → backoffice(管理画面。**社内 IP だけ**)
 
-さらに、内部の人だけが使う口(`/admin`・`/metrics`・`/readyz`)は、どの窓口でも外から 403 で閉じています。
+さらに、内部の人だけが使う口は外から 403 で閉じています(api と backoffice は `/admin`・`/metrics`・`/readyz`、お店(www)は `/metrics`。storefront には `/admin` と `/readyz` が無いためです)。
 利用者の本当の IP は cdn-waf が `X-Forwarded-For` に書き、ingress は **cdn-waf から来たときだけ** その値を信じます(偽れないように)。
 
 たとえ: **ショッピングモールの警備員(cdn-waf)と、各店の受付(ingress)** です。警備員は怪しい人を止め、よく聞かれる案内(キャッシュ)は自分で答えます。
@@ -47,7 +47,7 @@ ingress は、ホスト名を見て 3 つの窓口(エンドポイント)に振�
 
 ::: tip CCv2 では
 ingress のホスト名の振り分けは、Cloud Portal の「エンドポイント」に当たります。窓口ごとの IP フィルタは、エンドポイントの「IP フィルタ」に当たります。
-「本番はお店・API を誰でも、管理画面は社内だけ。開発・検証はお店も社内だけ」という環境ごとの違いは、manifest.json の `environments` で決めます([インフラ-2](./06-infra-config-and-secrets))。
+「本番はお店・API を誰でも、管理画面は社内だけ。開発・検証はお店も社内だけ」という環境ごとの違いは、CCv2 では Cloud Portal で環境ごとにエンドポイントと IP フィルタを設定して作ります。このラボでは、それを manifest.json の `environments` に書いています([インフラ-2](./06-infra-config-and-secrets))。
 :::
 
 ## 3. まず触ってみる

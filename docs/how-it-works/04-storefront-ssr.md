@@ -197,7 +197,7 @@ docker compose exec storefront node -e "fetch('http://127.0.0.1:4000/metrics').t
 cdn-waf は `/`・`/p/…`・`/search` の HTML を 30 秒ためます。試すたびに別の商品コード(`100002`・`100003`…)を使うか、`EDGE_CACHE=off docker compose up -d cdn-waf` でキャッシュを切ってから試してください。
 :::
 
-ブラウザでは、開発者ツールの Network で「JavaScript を無効にする」と比べると分かりやすいです。SSR なら JS なしでも商品名が見え、CSR なら真っ白です。
+ブラウザでは、JavaScript を無効にして比べると分かりやすいです(Chrome なら開発者ツールを開いて command+shift+P(Windows は Ctrl+Shift+P)→「Disable JavaScript」(日本語の表示では「JavaScript を無効にする」)と打って選び、再読み込みします)。SSR なら JS なしでも商品名が見え、CSR なら真っ白です。
 
 ::: details 本格版(Kubernetes)では
 環境変数は manifest.json の `storefront.ssr.renderMode`・`storefront.ssr.timeoutMs` から Deployment に入ります。一時的に変えるなら次のようにします(戻すときは `k8s/up.sh` をやり直す)。

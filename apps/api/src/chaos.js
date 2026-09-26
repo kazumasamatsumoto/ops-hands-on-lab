@@ -87,7 +87,7 @@ function updateChaos(input) {
 // OCC API の前に通す関門です。遅延・エラー・メモリ漏れをここで起こします。
 async function chaosMiddleware(req, res, next) {
   if (chaos.leakMb > 0) {
-    // Buffer.alloc は中身を 0 で埋めるので、実際にメモリ(RSS)が増えます。
+    // Buffer.alloc は中身を指定の値(ここでは 1)で埋めて書き込むので、実際にメモリ(RSS)が増えます。
     leaked.push(Buffer.alloc(Math.floor(chaos.leakMb * 1024 * 1024), 1));
   }
   if (chaos.latencyMs > 0) {
