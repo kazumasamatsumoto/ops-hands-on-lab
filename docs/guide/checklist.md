@@ -1,7 +1,8 @@
 # 開発・運用に必要なこと一覧
 
 ::: tip 3 行まとめ
-- アプリを作って、動かし続けるために必要なことを、10 の分野(+ 全体)に分けて 1 行ずつ並べました。全 70 項目です(うち 16 項目はラボでは扱わないが現場で必要なもの)。
+- アプリを作って、動かし続けるために必要なことを、10 の分野(+ 全体)に分けて 1 行ずつ並べました。全 79 項目です(うち 15 項目はラボでは扱わないが現場で必要なもの)。
+- 71〜79 は、ラボを CCv2 + ヘッドレスの形(cdn-waf → ingress のエンドポイント → storefront / api / backoffice / worker)にしたことで見えるようになった項目です。番号は変えずに、各分野の表の最後に足しています。
 - どの行にも「無いとどんな事故が起きるか」を書いています。特別な技術の一覧ではなく、**ふつうに要ることの一覧**です。
 - 各行の ☐ に、自分の案件で「できている」「設計書に書いてある」なら印を付けてください。空いた行が、次に手を付ける場所です。
 :::
@@ -13,31 +14,32 @@
 | 必要なこと | やること(決めること・作ること) |
 | 何のため | それがあると何がうれしいか |
 | 無いとどうなる | 実際によく起きる事故の例 |
-| ラボで見る | ラボの演習ページか、実物のファイル。**ラボでは扱わない** と書いた行は、ラボには無いが現場では必要なもの |
+| ラボで見る | ラボの演習ページか、実物のファイル(URL は軽量版・本格版で同じ。お店は http://www.lab.localhost:18080 )。**ラボでは扱わない** と書いた行は、ラボには無いが現場では必要なもの |
 | 設計書のどこ | ラボの方式設計書・詳細設計書の節。ラボに無い文書は **カタログ番号**(D-INF-02 など)で書いています |
 | 案件 | 自分の案件でできていれば ☑ に(印刷するか、コピーして使ってください) |
 
 ::: info カタログ番号(D-…)とは
 D-FE-04、D-SRE-10 のような番号は、設計書を「画面 1 つ」「監視項目 1 つ」「障害 1 つ」の単位で並べた一覧(カタログ)でよく使う番号の付け方です。
-ラボで書いた詳細設計書は 11 本だけなので、ほかは番号と名前だけを示しています。自分の案件の設計書の一覧に、同じ行があるかを確かめてください。
+ラボで書いた詳細設計書は 12 本だけなので、ほかは番号と名前だけを示しています。自分の案件の設計書の一覧に、同じ行があるかを確かめてください。
 :::
 
 ::: tip 使い方のコツ
 「ラボでは扱わない」行ほど、現場で抜けがちです。演習で触れない分、**名前だけでも覚えて、案件の設計書に行があるか**を確かめてください。
 :::
 
-## 1. 全体(6 項目)
+## 1. 全体(7 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
 | 1 | 止まってよい量・速さ・戻す時間を**数字で**決める(非機能の目標) | 作り込みと見張りの基準にする | 障害のあとで「これは許される範囲か」で発注側と揉める。誰も基準を持っていない | [SLI と SLO](/exercises/09-sre-sli-slo) | [全体方式 5](/design/architecture/00-overall#s5) | ☐ |
 | 2 | 構成図を 1 枚にする(入口・アプリ・データ・見張り) | 全員が同じ絵で話す | 障害のとき、どこで詰まっているか誰も説明できない | [地図](/guide/map) | [全体方式 3](/design/architecture/00-overall#s3) | ☐ |
 | 3 | 誰が何を持つか(責任分界)を書く | 障害のときに迷わず動く | 「それは基盤チームの担当だと思っていた」で 2 時間が消える | ラボでは扱わない | [全体方式 3](/design/architecture/00-overall#s3) | ☐ |
-| 4 | 環境の一覧(開発・検証・本番)と違いを書く | 検証で通ったのに本番で落ちる、を防ぐ | 検証だけメモリが多く、本番で初めて落ちる | 軽量版と本格版の 2 つ([準備と起動](/guide/setup)) | [インフラ方式 4.1](/design/architecture/03-infrastructure#s4-1)、D-INF-02 環境一覧 | ☐ |
+| 4 | 環境の一覧(開発・検証・本番)と違いを書く | 検証で通ったのに本番で落ちる、を防ぐ | 検証だけメモリが多く、本番で初めて落ちる | 本格版の環境 d1・s1・p1([manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) の `environments`、[違いの表](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/manifest/README.md)) | [インフラ方式 4.8](/design/architecture/03-infrastructure#s4-8)、D-INF-02 環境一覧 | ☐ |
 | 5 | 使う部品の版を固定する(`latest` を使わない) | いつ作っても同じ物ができる | 昨日と同じ手順でビルドしたのに、勝手に新しい版が入って動かない | [docker-compose.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/docker-compose.yml) | [全体方式 4.5](/design/architecture/00-overall#s4-5) | ☐ |
 | 6 | 本番を変えるときの承認の流れ(変更管理)を決める | 誰がいつ何を変えたか追える | 夜中に誰かが設定を 1 行変え、翌朝の障害の原因が分からない | ラボでは扱わない | D-INF-08 パイプラインと承認 | ☐ |
+| 71 | 環境ごとの差分(台数・IP フィルタ・キャッシュ・ログの細かさ)を 1 か所で管理する | 「検証だけ違う設定」を意図した差に限る | 検証環境の IP フィルタを外したまま本番の設定を写し、開発中の画面が誰でも見える。逆に本番で社内限定のまま公開日を迎える | [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) の `environments.d1/s1/p1` → [k8s/generated/envs/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/generated/envs)(kustomize のオーバーレイ) | [インフラ方式 4.8](/design/architecture/03-infrastructure#s4-8)、[ネットワーク方式 4.8](/design/architecture/04-network#s4-8) | ☐ |
 
-## 2. FE(画面)(7 項目)
+## 2. FE(画面)(8 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
@@ -46,47 +48,52 @@ D-FE-04、D-SRE-10 のような番号は、設計書を「画面 1 つ」「監�
 | 9 | SSR の待ち時間の上限と、超えたときの逃げ道 | API が遅くても画面を出す | API が遅いと画面の生成も止まり、サーバーの手が全部ふさがって全体が止まる | [API が遅い → SSR が逃げる](/exercises/14-incident-slow-api) | [FE 方式 4.3](/design/architecture/01-frontend#s4-3)、[D-FE-22](/design/detail/D-FE-22-ssr-server) | ☐ |
 | 10 | 最初に読む JS の大きさの上限(予算)をビルドで確かめる | 画面が重くなるのを、作った時点で止める | 便利なライブラリを 1 つ足しただけで、スマホの表示が 2 秒遅くなる。誰も気づかない | [遅延読み込みと JS の予算](/exercises/03-fe-lazy-loading) | [FE 方式 4.4](/design/architecture/01-frontend#s4-4) | ☐ |
 | 11 | どの画面を後から読むか(遅延読み込みの単位)を決める | トップ画面を軽くする | 使う人の少ない画面の部品まで、全員が最初に読み込む | [遅延読み込みと JS の予算](/exercises/03-fe-lazy-loading) | [FE 方式 4.4](/design/architecture/01-frontend#s4-4) | ☐ |
-| 12 | ログインの印(トークン)の置き場所を決める | 盗まれにくくする。他人と混ざらないようにする | サーバー側で共有の場所に置いてしまい、別の人の画面に別人の名前が出る | [auth.service.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/core/auth.service.ts) | [FE 方式 4.5](/design/architecture/01-frontend#s4-5) | ☐ |
-| 13 | エラー画面(404・500)の出し方と状態コード | 利用者に次の行動を示す。検索エンジンに正しく伝える | 「ページがありません」なのに 200 を返し、検索エンジンに空のページが大量に載る | [server.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server.ts)(SSR 失敗時の 500 画面) | D-FE-18 エラーページ | ☐ |
+| 12 | ログインの印(トークン)の置き場所を決める | 盗まれにくくする。他人と混ざらないようにする | サーバー側で共有の場所に置いてしまい、別の人の画面に別人の名前が出る | アクセストークンはブラウザのメモリと sessionStorage だけ([auth.service.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/core/auth.service.ts)) | [FE 方式 4.5](/design/architecture/01-frontend#s4-5) | ☐ |
+| 13 | エラー画面(404・500)の出し方と状態コード | 利用者に次の行動を示す。検索エンジンに正しく伝える | 「ページがありません」なのに 200 を返し、検索エンジンに空のページが大量に載る | 無い商品 http://www.lab.localhost:18080/p/NO-SUCH-CODE は HTTP 404([journey.spec.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/e2e/tests/journey.spec.ts))、SSR 失敗時は 500([server.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server.ts)) | D-FE-18 エラーページ | ☐ |
+| 78 | CMS で変えた中身が画面に出るまでの時間を決め、業務側に伝える | 「直したのに出ない」の問い合わせを防ぐ。キャッシュの時間と業務の期待をそろえる | 担当者が管理画面でセールの文言を直したが、CDN のキャッシュで古い文言が出続け、何度も直して履歴が荒れる | [CMS の JSON が画面になるまで](/exercises/21-headless-cms)(backoffice でバナーを変えると、cdn-waf の 30 秒が切れてから出る) | [FE 方式 4.6](/design/architecture/01-frontend#s4-6)、[ネットワーク方式 4.2](/design/architecture/04-network#s4-2)、[D-FE-05](/design/detail/D-FE-05-headless-cms) | ☐ |
 
-## 3. BE(API)(7 項目)
+## 3. BE(API)(8 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
-| 14 | API の一覧と入出力(入力の上限・形の検査を含む) | 画面と API の約束をそろえる | 画面側が想定しない形が返り、ある日突然画面が壊れる。巨大な入力でサーバーが固まる | [server.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/server.js) | [BE 方式 4.1](/design/architecture/02-backend#s4-1)、[D-BE 注文 API](/design/detail/D-BE-orders-api) | ☐ |
-| 15 | 認証(ログインの確かめ方と、トークンの有効期限) | 本人であることを確かめる | トークンの期限が無く、盗まれたら永遠に使われる | [API と認可の事故](/exercises/04-be-api-and-authz) | [BE 方式 4.2](/design/architecture/02-backend#s4-2) | ☐ |
+| 14 | API の一覧と入出力(入力の上限・形の検査を含む) | 画面と API の約束をそろえる | 画面側が想定しない形が返り、ある日突然画面が壊れる。巨大な入力でサーバーが固まる | `/occ/v2/samplestore/...` の一覧([aspects/api.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/aspects/api.js)、`fields=BASIC/DEFAULT/FULL`) | [BE 方式 4.1](/design/architecture/02-backend#s4-1)、[D-BE 注文 API](/design/detail/D-BE-orders-api) | ☐ |
+| 15 | 認証(ログインの確かめ方と、トークンの有効期限) | 本人であることを確かめる | トークンの期限が無く、盗まれたら永遠に使われる | OAuth のトークン `POST /authorizationserver/oauth/token`(有効 900 秒。[oauth.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/oauth.js))、[API と認可の事故](/exercises/04-be-api-and-authz) | [BE 方式 4.2](/design/architecture/02-backend#s4-2) | ☐ |
 | 16 | 認可(**そのデータの持ち主か**を毎回確かめる) | 他人のデータを見せない | URL の注文番号を 1 つ変えるだけで、他人の住所と買った物が見える(実際に多い事故) | [API と認可の事故](/exercises/04-be-api-and-authz) | [BE 方式 4.3](/design/architecture/02-backend#s4-3)、[D-BE 注文 API](/design/detail/D-BE-orders-api) | ☐ |
 | 17 | SQL は値を「置き場所(プレースホルダ)」で渡す | SQL インジェクションを防ぐ | 検索窓に特殊な文字を入れられ、会員のパスワードの控えを抜かれる | [WAF が攻撃を止める](/exercises/17-sec-waf) | [BE 方式 4.4](/design/architecture/02-backend#s4-4) | ☐ |
-| 18 | エラーの返し方(中身を外に見せない) | 攻撃の手がかりを与えない | 500 の画面に SQL 文やファイルの場所がそのまま出る | [server.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/server.js) | [BE 方式 4.5](/design/architecture/02-backend#s4-5) | ☐ |
+| 18 | エラーの返し方(中身を外に見せない) | 攻撃の手がかりを与えない | 500 の画面に SQL 文やファイルの場所がそのまま出る | `{"errors":[{"type","message"}]}` の形だけを返す([http-common.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/http-common.js)) | [BE 方式 4.5](/design/architecture/02-backend#s4-5) | ☐ |
 | 19 | DB 接続の数とタイムアウトの上限 | DB が遅いときに API ごと固まらないようにする | DB が一瞬止まっただけで、API の待ち行列が伸び続けて全体が止まる | [db.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/db.js) | [BE 方式 4.7](/design/architecture/02-backend#s4-7) | ☐ |
-| 20 | バッチ・定期処理の一覧(時刻・失敗時の扱い) | 夜間処理の抜けや重なりを防ぐ | 月末の集計バッチが昼の注文処理と重なり、画面が遅くなる | ラボでは扱わない | D-BE-13 バッチの一覧 | ☐ |
+| 20 | バッチ・定期処理の一覧(時刻・失敗時の扱い) | 夜間処理の抜けや重なりを防ぐ | 月末の集計バッチが昼の注文処理と重なり、画面が遅くなる | worker(`ASPECT=backgroundProcessing`)の `stockImportJob`・`searchIndexJob`(60 秒ごと。前の回が終わっていなければ飛ばす。[worker.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/aspects/worker.js)) | [BE 方式 4.10](/design/architecture/02-backend#s4-10)、D-BE-13 バッチの一覧 | ☐ |
+| 77 | 検索の索引をいつ・どうやって作り直すか、失敗したらどうなるかを決める | 検索結果と正しいデータのずれを、許せる範囲に収める | 価格を直したのに検索結果だけ古い価格のまま。索引の作り直しが止まっていることに 1 週間気づかない | 本格版の Solr と `searchIndexJob`(DB の全商品を 60 秒ごとに入れ直す。[solr.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/solr.js))。Solr に届かないと検索だけ 503(`kubectl -n lab scale deploy/search --replicas=0` で見られる) | [BE 方式 4.11](/design/architecture/02-backend#s4-11)、[DR 方式 4.6](/design/architecture/09-disaster-recovery#s4-6) | ☐ |
 
-## 4. インフラ(8 項目)
+## 4. インフラ(9 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
-| 21 | 構成をファイルで持つ(IaC) | 同じ環境を何度でも作れる。変更の履歴が残る | 本番だけ手で設定が足されていて、作り直したら動かない | [docker-compose.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/docker-compose.yml) | [インフラ方式 4.1](/design/architecture/03-infrastructure#s4-1)、[D-INF-01](/design/detail/D-INF-01-compose-and-k8s) | ☐ |
+| 21 | 構成をファイルで持つ(IaC) | 同じ環境を何度でも作れる。変更の履歴が残る | 本番だけ手で設定が足されていて、作り直したら動かない | [docker-compose.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/docker-compose.yml)(軽量版)・[k8s/generated/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/generated)(本格版) | [インフラ方式 4.1](/design/architecture/03-infrastructure#s4-1)、[D-INF-01](/design/detail/D-INF-01-compose-and-k8s) | ☐ |
 | 22 | コンテナの作り方(小さく、root で動かさない) | 乗っ取られたときの被害を小さくする | 乗っ取られたコンテナが何でもできる権限を持っていた | [api の Dockerfile](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/Dockerfile) | [インフラ方式 4.2](/design/architecture/03-infrastructure#s4-2) | ☐ |
 | 23 | メモリ・CPU の上限を決める | 1 つの部品の暴走で全体を巻き込まない | メモリ漏れの 1 つのアプリがサーバーのメモリを食い尽くし、同じサーバーの他のアプリも落ちる | [メモリ不足で再起動を繰り返す](/exercises/15-incident-crashloop) | [インフラ方式 4.3](/design/architecture/03-infrastructure#s4-3) | ☐ |
 | 24 | ヘルスチェック(生きているか / 仕事を受けられるか)を分ける | 準備できていない台に客を送らない | DB につながっていない台にも振り分けられ、一部の人だけエラーになる | [ローリング更新](/exercises/05-infra-rolling-update) | [インフラ方式 4.4](/design/architecture/03-infrastructure#s4-4)、[BE 方式 4.6](/design/architecture/02-backend#s4-6) | ☐ |
 | 25 | 止めずに入れ替える方法(ローリング更新)と戻し方 | 昼間でも安全にリリースする | 毎回夜中に全停止してリリース。失敗しても戻し方が分からない | [ローリング更新](/exercises/05-infra-rolling-update) | [インフラ方式 4.6](/design/architecture/03-infrastructure#s4-6) | ☐ |
-| 26 | 止める合図を受けたら、受付中の処理を終えてから止まる(穏やかな停止) | 入れ替えのたびにエラーを出さない | リリースのたびに、処理中だった注文が数件失敗する | [server.js の停止処理](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/server.js) | [BE 方式 4.8](/design/architecture/02-backend#s4-8) | ☐ |
-| 27 | 設定値を環境ごとに分け、コードに書かない | 同じイメージを全環境で使う | 検証環境の接続先が入ったまま本番に出る | [設定値とシークレット](/exercises/06-infra-config-and-secrets) | [インフラ方式 4.5](/design/architecture/03-infrastructure#s4-5) | ☐ |
+| 26 | 止める合図を受けたら、受付中の処理を終えてから止まる(穏やかな停止) | 入れ替えのたびにエラーを出さない | リリースのたびに、処理中だった注文が数件失敗する | [http-common.js の停止処理](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/http-common.js)(3 つの aspect で共通) | [BE 方式 4.8](/design/architecture/02-backend#s4-8) | ☐ |
+| 27 | 設定値を環境ごとに分け、コードに書かない | 同じイメージを全環境で使う | 検証環境の接続先が入ったまま本番に出る | [設定値とシークレット](/exercises/06-infra-config-and-secrets)(api の外向きの住所 `API_PUBLIC_URL` も JS に焼き込まず、HTML の `<meta>` で渡す) | [インフラ方式 4.5](/design/architecture/03-infrastructure#s4-5) | ☐ |
 | 28 | OS・部品のパッチと版上げの周期 | 古い部品の穴をふさぐ | サポートの切れた版を使い続け、直せない穴が残る | ラボでは扱わない | D-INF-10 パッチの適用 | ☐ |
+| 72 | 構成(アプリ・aspect・台数・環境変数・エンドポイント・IP フィルタ)を 1 つの設計図(manifest)に書き、実物はそこから作る | 「設計図」と「動いている物」がずれないようにする。1 行の変更で何が変わるかを見える形にする | 台数を設計書では 2 台と書き、実物は 1 台のまま。誰も気づかず、1 台の障害でお店が止まる | [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) → `node tools/manifest/render.mjs`([render.mjs](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/manifest/render.mjs))。`--check` で軽量版との食い違いを確かめる | [全体方式 4.7](/design/architecture/00-overall#s4-7)、[インフラ方式 4.7](/design/architecture/03-infrastructure#s4-7)、[QA 方式 4.5](/design/architecture/06-qa#s4-5) | ☐ |
 
-## 5. ネットワーク(7 項目)
+## 5. ネットワーク(9 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
-| 29 | 通り道(どの URL をどこへ振り分けるか)を決める | 入口を 1 つにまとめ、守りと高速化を一か所で行う | 画面と API の入口が別々で、片方だけ守りが抜ける | [前段のキャッシュ](/exercises/07-nw-cache) | [ネットワーク方式 4.1](/design/architecture/04-network#s4-1)、[D-NW-01](/design/detail/D-NW-01-edge-route) | ☐ |
-| 30 | キャッシュしてよい物・時間を決める | 速く返し、アプリの負担を減らす | キャッシュが無く、セールの開始と同時にアプリが落ちる | [前段のキャッシュ](/exercises/07-nw-cache) | [ネットワーク方式 4.2](/design/architecture/04-network#s4-2) | ☐ |
-| 31 | **キャッシュしてはいけない物**を決める(ログイン中の画面など) | 他人の画面を見せない | ログイン中の人のマイページがキャッシュされ、次に来た人に別人の名前と住所が出る | [前段のキャッシュ](/exercises/07-nw-cache) | [ネットワーク方式 4.3](/design/architecture/04-network#s4-3) | ☐ |
+| 29 | 通り道(どのホスト名・URL をどこへ振り分けるか)を決める | 入口を決まった段(CDN・WAF → エンドポイント)にまとめ、守りと高速化を一か所で行う | 画面と API の入口が別々で、片方だけ守りが抜ける | [Ingress とエンドポイント](/exercises/20-nw-ingress-endpoints)(www → storefront、api → api、backoffice → backoffice) | [ネットワーク方式 4.1](/design/architecture/04-network#s4-1)、[D-NW-01](/design/detail/D-NW-01-edge-route) | ☐ |
+| 30 | キャッシュしてよい物・時間を決める | 速く返し、アプリの負担を減らす | キャッシュが無く、セールの開始と同時にアプリが落ちる | [前段のキャッシュ](/exercises/07-nw-cache)(画面・商品・CMS は 30 秒、画像 `/medias/` は 1 日) | [ネットワーク方式 4.2](/design/architecture/04-network#s4-2) | ☐ |
+| 31 | **キャッシュしてはいけない物**を決める(ログイン中の画面など) | 他人の画面を見せない | ログイン中の人のマイページがキャッシュされ、次に来た人に別人の名前と住所が出る | [前段のキャッシュ](/exercises/07-nw-cache)(`Authorization`・Cookie 付きはためない。注文・トークンは `Cache-Control: no-store`) | [ネットワーク方式 4.3](/design/architecture/04-network#s4-3) | ☐ |
 | 32 | キャッシュを消す手順(価格の訂正など) | 間違った情報をすぐ消す | 価格を直したのに、古い価格が何時間も出続ける | ラボでは扱わない(30 秒で自然に消える) | D-PERF-03 キャッシュ消去の運用 | ☐ |
-| 33 | 管理画面は社内からだけ通す(IP 制限) | 管理の入口を外に見せない | 管理画面が誰でも開けて、パスワードを総当たりされる | [CORS と IP 制限](/exercises/08-nw-cors-and-ip) | [ネットワーク方式 4.4](/design/architecture/04-network#s4-4) | ☐ |
-| 34 | ブラウザから呼べる相手(CORS)を決める | 他のサイトから API を勝手に使わせない | 「とりあえず全部許可」にして、偽サイトから会員の API を呼ばれる | [CORS と IP 制限](/exercises/08-nw-cors-and-ip) | [ネットワーク方式 4.5](/design/architecture/04-network#s4-5) | ☐ |
+| 33 | 管理画面は社内からだけ通す(IP 制限) | 管理の入口を外に見せない | 管理画面が誰でも開けて、パスワードを総当たりされる | [Ingress とエンドポイント](/exercises/20-nw-ingress-endpoints)・[CORS と IP 制限](/exercises/08-nw-cors-and-ip)(backoffice.lab.localhost は `127.0.0.1/32`・`172.30.89.0/24`(軽量版の Docker ネットワーク)・`172.30.91.0/24`(本格版の kind のネットワーク)だけ) | [ネットワーク方式 4.4](/design/architecture/04-network#s4-4) | ☐ |
+| 34 | ブラウザから呼べる相手(CORS)を決める | 他のサイトから API を勝手に使わせない | 「とりあえず全部許可」にして、偽サイトから会員の API を呼ばれる | [CORS と IP 制限](/exercises/08-nw-cors-and-ip)(www → api は別オリジン。`CORS_ALLOWED_ORIGINS`) | [ネットワーク方式 4.5](/design/architecture/04-network#s4-5) | ☐ |
 | 35 | 証明書(HTTPS)の発行・更新と、期限の見張り | 通信を守る。期限切れで止めない | 証明書の期限が切れ、ある朝サイト全体に警告が出て誰も買えない | ラボでは扱わない(http のみ) | D-NW-05 証明書、D-INC-06 証明書の期限切れ | ☐ |
+| 73 | エンドポイントごとに IP 制限を決める(誰でも / 社内だけ)。環境ごとの違いも書く | 開けてよい物だけを開ける。開発・検証の環境を外に見せない | 本番と同じ設定で作った検証環境が、公開前の新商品ごと外から見えていた | [Ingress とエンドポイント](/exercises/20-nw-ingress-endpoints)、[manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) の `endpoints[].ipFilter` と `environments.*.ipFilterOverrides`(d1・s1 は www・api も社内だけ) | [ネットワーク方式 4.8](/design/architecture/04-network#s4-8) | ☐ |
+| 74 | CORS の許可先を「環境ごとの storefront の住所」だけにし、住所が変わったら一緒に直す | 許可先の書き忘れ・書きすぎを防ぐ | 本番のドメインを変えた日に許可先を直し忘れ、ブラウザからの API 呼び出しが全部失敗する。慌てて「全部許可」にして戻し忘れる | `CORS_ALLOWED_ORIGINS=http://www.lab.localhost:18080`([docker-compose.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/docker-compose.yml)・[manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json))、`Vary: Origin`([cors.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/cors.js)) | [ネットワーク方式 4.5](/design/architecture/04-network#s4-5) | ☐ |
 
-## 6. SRE(見張り)(9 項目)
+## 6. SRE(見張り)(11 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
@@ -95,10 +102,12 @@ D-FE-04、D-SRE-10 のような番号は、設計書を「画面 1 つ」「監�
 | 38 | アラートの基準(予算の減る速さ = バーンレート) | 鳴りすぎと見逃しを両方減らす | 1 件のエラーで夜中に鳴り続け、誰もアラートを見なくなる(オオカミ少年) | [エラーバジェットとアラート](/exercises/10-sre-burn-rate-alert) | [SRE 方式 4.3](/design/architecture/05-sre#s4-3)、[D-SRE-02](/design/detail/D-SRE-02-slo-burn-rate) | ☐ |
 | 39 | 通知の届け先と、緊急 / 翌営業日の区別 | 本当に急ぐものだけ人を起こす | 全部が同じ重さで届き、大事な通知が埋もれる | [エラーバジェットとアラート](/exercises/10-sre-burn-rate-alert) | [SRE 方式 4.5](/design/architecture/05-sre#s4-5) | ☐ |
 | 40 | ダッシュボード(最初に開く 1 枚) | 障害のときに見る場所を迷わない | 障害のたびに「どのグラフを見ればいいの?」から始まる | [SLI と SLO](/exercises/09-sre-sli-slo) | [SRE 方式 4.6](/design/architecture/05-sre#s4-6) | ☐ |
-| 41 | ログを 1 か所に集め、1 行 1 JSON で出す | 原因を探す時間を短くする | サーバーに 1 台ずつ入って、ばらばらの形のログを目で追う | [API が遅い → SSR が逃げる](/exercises/14-incident-slow-api) | [SRE 方式 4.7](/design/architecture/05-sre#s4-7) | ☐ |
+| 41 | ログを 1 か所に集め、1 行 1 JSON で出す | 原因を探す時間を短くする | サーバーに 1 台ずつ入って、ばらばらの形のログを目で追う | [API が遅い → SSR が逃げる](/exercises/14-incident-slow-api)(Grafana の Loki で `service` ごとに絞る。cdn-waf・ingress のログも JSON) | [SRE 方式 4.7](/design/architecture/05-sre#s4-7) | ☐ |
 | 42 | 指標の分け方(ラベル)を増やしすぎない | 見張りの道具を重くしない | URL をそのまま指標の名前に入れ、種類が何百万にも増えて見張りの道具が落ちる | [metrics.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/metrics.js) | [SRE 方式 4.1](/design/architecture/05-sre#s4-1) | ☐ |
 | 43 | 当番表(オンコール)と、呼び出しの上げ方 | 夜中でも誰かが確実に動く | 通知は飛んだが、誰も自分の番だと思っていなかった | ラボでは扱わない(pager は画面に並べるだけ) | D-SRE-10 当番表と通知経路 | ☐ |
 | 44 | 定常作業の一覧(日次・週次・月次) | やるべき確認を忘れない | ディスクの空きを誰も見ておらず、ある日ログが書けずに止まる | ラボでは扱わない | D-SRE-09 定常運用作業 | ☐ |
+| 76 | 定期ジョブを「最後に成功した時刻」で見張る | 画面を持たない処理の止まりに気づく | 在庫の取り込みが 3 日止まっていたのに、画面は普通に動くので誰も気づかず、在庫切れの商品が売れ続ける | `cronjob_last_success_timestamp_seconds` と アラート `CronJobStale`(5 分以上成功なし)・`CronJobFailureRatioHigh`([slo-alerts.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/prometheus/rules/slo-alerts.yml))。Grafana の「worker(定期ジョブ = backgroundProcessing)」の段 | [SRE 方式 4.8](/design/architecture/05-sre#s4-8)、[障害対応方式 4.7](/design/architecture/08-incident-response#s4-7) | ☐ |
+| 79 | トレースで 1 リクエストの道筋(どの部品で何秒かかったか)を追えるようにする | 部品をまたぐ遅さの原因を、推測でなく見て決める | 「画面が遅い」の原因が storefront か api か DB か分からず、各チームが「うちではない」と言い合う | 本格版: OpenTelemetry Collector → Tempo。ログの `trace_id` から Grafana で道筋に飛ぶ(ダッシュボード「サンプルストア 1 リクエストの道筋」。送る側: [api の otel.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/otel.js)・[storefront の otel.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server/otel.ts)) | [SRE 方式 4.9](/design/architecture/05-sre#s4-9) | ☐ |
 
 ## 7. QA(試験)(5 項目)
 
@@ -138,14 +147,15 @@ D-FE-04、D-SRE-10 のような番号は、設計書を「画面 1 つ」「監�
 | 61 | 復元を実際に試し、RTO・RPO を測って記録する | 「戻せる」ことを確かめる | バックアップはあったが戻し方を誰も知らず、戻すのに 2 日かかった | [バックアップから戻す](/exercises/16-dr-backup-restore) | [DR 方式 4.3](/design/architecture/09-disaster-recovery#s4-3)・[5](/design/architecture/09-disaster-recovery#s5)、D-DR-06 訓練の記録 | ☐ |
 | 62 | バックアップを別の場所に置く | 同じ場所の故障で一緒に失わない | 本番と同じディスクにバックアップを置いていて、両方消えた | ラボでは扱わない(PC の backups/ に置くだけ) | [DR 方式 7](/design/architecture/09-disaster-recovery#s7) | ☐ |
 
-## 11. セキュリティ(8 項目)
+## 11. セキュリティ(9 項目)
 
 | # | 必要なこと | 何のため | 無いとどうなる | ラボで見る | 設計書のどこ | 案件 |
 | --- | --- | --- | --- | --- | --- | :-: |
 | 63 | 入口で攻撃をふるい落とす(WAF)と、誤遮断の直し方 | アプリの穴を突かれる前に止める | 検索窓からの SQL インジェクションが素通り。逆に WAF を入れたら普通の注文まで止まり、慌てて WAF ごと切る | [WAF が攻撃を止める](/exercises/17-sec-waf) | [セキュリティ方式 4.1・4.2](/design/architecture/10-security#s4-1)、[D-SEC-01](/design/detail/D-SEC-01-waf-and-rate-limit) | ☐ |
-| 64 | ログインの連打を止める(レート制限) | パスワードの総当たりを防ぐ | 1 秒に何百回もログインを試され、弱いパスワードの会員が乗っ取られる | [ログインの連打を止める](/exercises/18-sec-rate-limit-login) | [セキュリティ方式 4.3](/design/architecture/10-security#s4-3) | ☐ |
-| 65 | CSP とセキュリティヘッダで、読み込んでよい物を縛る | 差し込まれたスクリプトを動かさない | 入力欄に仕込まれたスクリプトが動き、カード番号の入力を外に送られる | [CSP で外部スクリプトを止める](/exercises/19-sec-csp) | [セキュリティ方式 4.5](/design/architecture/10-security#s4-5) | ☐ |
-| 66 | 秘密情報(鍵・パスワード)の置き場所と入れ替えの手順 | 漏れにくくし、漏れたらすぐ替える | 署名鍵がリポジトリに入ったまま公開され、誰でもログインの印を作れる | [設定値とシークレット](/exercises/06-infra-config-and-secrets) | [セキュリティ方式 4.6](/design/architecture/10-security#s4-6)、D-SEC-10 秘密情報の管理 | ☐ |
+| 64 | ログインの連打を止める(レート制限) | パスワードの総当たりを防ぐ | 1 秒に何百回もログインを試され、弱いパスワードの会員が乗っ取られる | [ログインの連打を止める](/exercises/18-sec-rate-limit-login)(ingress でトークンの発行を IP ごとに 1 秒 1 回・burst 5、cdn-waf で全体を 20r/s) | [セキュリティ方式 4.3](/design/architecture/10-security#s4-3) | ☐ |
+| 65 | CSP とセキュリティヘッダで、読み込んでよい物を縛る | 差し込まれたスクリプトを動かさない | 入力欄に仕込まれたスクリプトが動き、カード番号の入力を外に送られる | [CSP で外部スクリプトを止める](/exercises/19-sec-csp)(www・api・backoffice でホストごとに別の CSP) | [セキュリティ方式 4.5](/design/architecture/10-security#s4-5) | ☐ |
+| 66 | 秘密情報(鍵・パスワード)の置き場所と入れ替えの手順 | 漏れにくくし、漏れたらすぐ替える | 署名鍵がリポジトリに入ったまま公開され、誰でもログインの印を作れる | [設定値とシークレット](/exercises/06-infra-config-and-secrets)(manifest には Secret の**名前と鍵の名前だけ**を書き、値は書かない: `secrets.keys`) | [セキュリティ方式 4.6](/design/architecture/10-security#s4-6)、D-SEC-10 秘密情報の管理 | ☐ |
+| 75 | 管理画面と「中の人だけの口」を外に出さない(別のエンドポイントに分け、`/admin`・`/metrics`・`/readyz` を入口で閉じる) | 攻撃の入口を減らす。中の状態を外に見せない | 障害の切り分け用に作った管理 API が公開の住所から叩けて、外の誰かにスイッチを切り替えられる | [Ingress とエンドポイント](/exercises/20-nw-ingress-endpoints)(`http://api.lab.localhost:18080/admin/chaos` は 403。切り替えは `tools/chaos.sh` で中から) | [セキュリティ方式 4.4](/design/architecture/10-security#s4-4)、[ネットワーク方式 4.4](/design/architecture/04-network#s4-4) | ☐ |
 
 ### ラボでは扱わないが、必ず要るもの(セキュリティ)
 

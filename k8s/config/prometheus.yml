@@ -1,9 +1,11 @@
-# 本格版(Kubernetes)の Prometheus の設定です。軽量版(observability/prometheus/prometheus.yml)との違いは収集先だけです。
+# 本格版(Kubernetes)の Prometheus の設定です。軽量版(observability/prometheus/prometheus.yml)との違いは「収集先の見つけ方」だけです。
+# ルール(observability/prometheus/rules/)は軽量版と同じファイルを、k8s/up.sh が ConfigMap prometheus-rules に入れて使います。
 #
 # 軽量版: 「api:3001」のように決まった名前を 1 つ書けば足りました(api は 1 つだけだから)。
-# 本格版: api も web も Pod が 2 つ以上あり、作り直すたびに IP が変わります。
+# 本格版: api も storefront も Pod が 2 つ以上あり、作り直すたびに IP が変わります。
 #         そこで Kubernetes に「今いる Pod の一覧」を聞き(kubernetes_sd_configs)、全部から集めます。
-#         job には Pod の app ラベル(api / web)を入れるので、ルールとダッシュボードは軽量版のまま使えます。
+#         job には Pod のラベル app.kubernetes.io/name(storefront・api・backoffice・worker)を入れるので、
+#         ルールとダッシュボードは軽量版のまま使えます。
 global:
   scrape_interval: 5s
   evaluation_interval: 5s
@@ -17,21 +19,46 @@ alerting:
         - targets: ["alertmanager:9093"]
 
 scrape_configs:
-  - job_name: lab-pods
+  # storefront・api・backoffice(manifest.json から作った Deployment の Pod。ポートの名前 http で /metrics を出しています)
+  - job_name: lab-apps
     metrics_path: /metrics
     kubernetes_sd_configs:
       - role: pod
         namespaces:
           names: [lab]
     relabel_configs:
-      # api(3001 番)と web(4000 番)の Pod だけを残します。
-      - source_labels: [__meta_kubernetes_pod_label_app, __meta_kubernetes_pod_container_port_number]
-        regex: "api;3001|web;4000"
+      # manifest.json から作った Pod(ラベル app.kubernetes.io/part-of=samplestore)の、名前が http のポートだけを残します。
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_part_of, __meta_kubernetes_pod_container_port_name]
+        regex: "samplestore;http"
         action: keep
-      # job = app ラベル(api / web)
-      - source_labels: [__meta_kubernetes_pod_label_app]
+      # worker は下の別の job で集めます(honor_labels が要るため)。db・search は /metrics を出さないので外します。
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
+        regex: "storefront|api|backoffice"
+        action: keep
+      # job = サービスの名前(storefront・api・backoffice)。軽量版の job_name と同じ値になります。
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name]
         target_label: job
       # どの Pod の数字か分かるように、Pod の名前も付けます。
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: pod
+      - source_labels: [__meta_kubernetes_pod_name]
+        target_label: instance
+
+  # worker(backgroundProcessing)。定期ジョブの指標はジョブ名を job というラベルで出す(例: job="stockImportJob")ので、
+  # 軽量版と同じく honor_labels: true で「アプリが付けた job を優先」します。それ以外の指標は下の relabel で job="worker" になります。
+  - job_name: worker
+    honor_labels: true
+    metrics_path: /metrics
+    kubernetes_sd_configs:
+      - role: pod
+        namespaces:
+          names: [lab]
+    relabel_configs:
+      - source_labels: [__meta_kubernetes_pod_label_app_kubernetes_io_name, __meta_kubernetes_pod_container_port_name]
+        regex: "worker;http"
+        action: keep
+      - target_label: job
+        replacement: worker
       - source_labels: [__meta_kubernetes_pod_name]
         target_label: pod
       - source_labels: [__meta_kubernetes_pod_name]

@@ -3,6 +3,14 @@ import { Router } from '@angular/router';
 import { ApiService, describeError } from '../core/api.service';
 import { AuthService } from '../core/auth.service';
 
+/**
+ * ログイン画面。
+ * 送り先は api の OAuth の窓口(POST /authorizationserver/oauth/token)です。storefront 自身はパスワードを確かめません。
+ * ブラウザから別オリジン(api.…)への POST ですが、本文が application/x-www-form-urlencoded なので
+ * 「単純なリクエスト」扱いになり、プリフライト(OPTIONS)は飛びません。返事を読めるかどうかは
+ * api が返す Access-Control-Allow-Origin で決まります(CORS)。
+ */
+
 @Component({
   selector: 'app-login',
   template: `
@@ -53,12 +61,12 @@ export class LoginPage {
     this.api.login(this.username(), this.password()).subscribe({
       next: (res) => {
         this.busy.set(false);
-        if (!res?.token) {
-          this.error.set('ログインの応答に合言葉(token)がありませんでした。');
+        if (!res?.access_token) {
+          this.error.set('ログインの応答にトークン(access_token)がありませんでした。');
           return;
         }
-        this.auth.setToken(res.token);
-        this.router.navigateByUrl('/me/orders');
+        this.auth.setToken(res.access_token, res.expires_in ?? 900);
+        this.router.navigateByUrl('/my-account/orders');
       },
       error: (err) => {
         this.busy.set(false);

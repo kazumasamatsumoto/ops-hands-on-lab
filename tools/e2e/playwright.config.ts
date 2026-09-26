@@ -1,7 +1,9 @@
 // Playwright の設定です。tools/e2e.sh が Docker(mcr.microsoft.com/playwright)の中で動かします。
 //
-// - 相手は利用者と同じ通り道の edge(Docker のネットワークの中からは http://edge:8080)。
-// - edge には「IP ごとに 1 秒 20 回まで」のレート制限があるので、テストは 1 本ずつ順番に流します(workers: 1)。
+// - 相手は利用者と同じ URL(http://www.lab.localhost:18080)。cdn-waf → ingress → storefront / api を通ります。
+//   tools/e2e.sh は、テストのコンテナを cdn-waf と同じネットワークの部屋(--network container:...)に入れます。
+//   ブラウザは *.localhost を必ず自分自身(127.0.0.1)として引くので、そこで待っている cdn-waf に届く、というしくみです。
+// - cdn-waf には「IP ごとに 1 秒 20 回まで」、ingress には「ログインは 1 秒 1 回まで」の制限があるので、テストは 1 本ずつ順番に流します(workers: 1)。
 // - 画面比較の基準画像は tests/*-snapshots/ に保存し、リポジトリで管理します。
 import { defineConfig, devices } from '@playwright/test';
 
@@ -10,7 +12,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 30_000,
+  timeout: 45_000,
   expect: {
     timeout: 10_000,
     // 画面比較: 違ってよい画素は 50 個まで。
@@ -21,7 +23,7 @@ export default defineConfig({
   reporter: [['list'], ['html', { open: 'never', outputFolder: 'playwright-report' }]],
   outputDir: 'test-results',
   use: {
-    baseURL: process.env.BASE_URL ?? 'http://edge:8080',
+    baseURL: process.env.BASE_URL ?? 'http://www.lab.localhost:18080',
     locale: 'ja-JP',
     timezoneId: 'Asia/Tokyo',
     trace: 'retain-on-failure',

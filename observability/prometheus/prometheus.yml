@@ -1,4 +1,5 @@
 # Prometheus の設定です。「どこから・何秒ごとに指標を集めるか」と「どのルールを使うか」を書きます。
+# job_name がそのまま指標の job ラベルになります(storefront・api・backoffice・worker)。ルールとダッシュボードはこの名前で絞り込みます。
 global:
   scrape_interval: 5s # 5 秒ごとに集める(ラボなので短め。本番は 15〜60 秒が多い)
   evaluation_interval: 5s # ルールを 5 秒ごとに計算する
@@ -11,16 +12,30 @@ alerting:
     - static_configs:
         - targets: ["alertmanager:9093"]
 
+# 指標は cdn-waf・ingress を通さず、各サービスに「中から」直接取りに行きます(/metrics は ingress で外から閉じているため)。
 scrape_configs:
+  - job_name: storefront
+    static_configs:
+      - targets: ["storefront:4000"]
+
   - job_name: api
-    metrics_path: /metrics
     static_configs:
       - targets: ["api:3001"]
 
-  - job_name: web
-    metrics_path: /metrics
+  - job_name: backoffice
     static_configs:
-      - targets: ["web:4000"]
+      - targets: ["backoffice:3001"]
+
+  # worker(backgroundProcessing)の定期ジョブの指標は、ジョブ名を job というラベルで出します(例: job="stockImportJob")。
+  # これは Prometheus が自分で付ける job(= ここの job_name)と同じ名前なので、ふつうは Prometheus が勝ち、
+  # アプリの job は exported_job に名前を変えられてしまいます。
+  # honor_labels: true は「アプリが付けたラベルを優先する」という指定です。
+  #   cronjob_* の指標   … job="stockImportJob" / "searchIndexJob"(アプリの値)
+  #   それ以外の指標    … アプリが job を付けていないので job="worker"(ここの job_name)
+  - job_name: worker
+    honor_labels: true
+    static_configs:
+      - targets: ["worker:3001"]
 
   - job_name: prometheus
     static_configs:

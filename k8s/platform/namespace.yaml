@@ -1,0 +1,6 @@
+# Namespace(名前空間)= クラスタの中の「部屋」です。ラボのアプリと観測の道具はすべて lab の部屋に入れます。
+# (ingress-nginx だけは、公式の定義どおり ingress-nginx の部屋に入ります)
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: lab

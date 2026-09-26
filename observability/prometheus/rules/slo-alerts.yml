@@ -10,6 +10,8 @@
 #   緊急(page)  : 1 時間窓 > 14.4 かつ 5 分窓 > 14.4   … 1 か月の予算の 2% を 1 時間で消費。すぐ人を起こす
 #   警告(ticket): 6 時間窓 > 6    かつ 30 分窓 > 6     … 1 か月の予算の 5% を 6 時間で消費。営業時間内に対応
 #
+# SLO を置いているのは storefront と api だけなので、アラートも {job=~"storefront|api"} に絞っています。
+#
 # 14.4 の出し方: 予算の 2% を 1 時間で使う → 0.02 × 720 時間(30 日)÷ 1 時間 = 14.4
 # 6 の出し方    : 予算の 5% を 6 時間で使う → 0.05 × 720 時間 ÷ 6 時間 = 6
 
@@ -18,21 +20,21 @@ groups:
     rules:
       - alert: ErrorBudgetBurnPage
         expr: |
-          job:slo_burn_rate:5m > 14.4
+          job:slo_burn_rate:5m{job=~"storefront|api"} > 14.4
           and
-          job:slo_burn_rate:1h > 14.4
+          job:slo_burn_rate:1h{job=~"storefront|api"} > 14.4
         for: 1m
         labels:
           severity: page
         annotations:
           summary: "{{ $labels.job }}: エラーバジェットを急速に消費しています(緊急)"
-          description: "5 分窓のバーンレートが {{ $value | printf \"%.1f\" }} です。このままだと約 2 日で 1 か月分の予算を使い切ります。"
+          description: "5 分窓のバーンレートが {{ $value | printf \"%.1f\" }} です。このままだと 30 日 ÷ この値 で 1 か月分の予算を使い切ります(基準の 14.4 なら約 2 日、100 なら約 7 時間)。"
 
       - alert: ErrorBudgetBurnTicket
         expr: |
-          job:slo_burn_rate:30m > 6
+          job:slo_burn_rate:30m{job=~"storefront|api"} > 6
           and
-          job:slo_burn_rate:6h > 6
+          job:slo_burn_rate:6h{job=~"storefront|api"} > 6
         for: 5m
         labels:
           severity: ticket
@@ -47,9 +49,9 @@ groups:
     rules:
       - alert: ErrorBudgetBurnDemo
         expr: |
-          job:slo_burn_rate:1m > 14.4
+          job:slo_burn_rate:1m{job=~"storefront|api"} > 14.4
           and
-          job:slo_burn_rate:5m > 14.4
+          job:slo_burn_rate:5m{job=~"storefront|api"} > 14.4
         for: 0s
         labels:
           severity: demo
@@ -80,13 +82,54 @@ groups:
           severity: ticket
         annotations:
           summary: "{{ $labels.job }}: SSR でエラーが起きています"
-          description: "1 秒あたり {{ $value | printf \"%.2f\" }} 件の SSR エラー。web のログ(Grafana の Loki パネル)を確かめてください。"
+          description: "1 秒あたり {{ $value | printf \"%.2f\" }} 件の SSR エラー。storefront のログ(Grafana の Loki パネル)を確かめてください。"
+
+  - name: cronjob
+    rules:
+      # 定期ジョブが止まっている(5 分以上、1 回も成功していない)。
+      # 画面は動いているのに、在庫や検索の索引がだんだん古くなる「気付きにくい障害」を見つけます。
+      # cronjob_last_success_timestamp_seconds は worker の起動した時刻から始まるので、起動直後に鳴ることはありません。
+      # job ラベルはジョブ名です(prometheus.yml の worker の honor_labels: true のため)。
+      - alert: CronJobStale
+        expr: time() - cronjob_last_success_timestamp_seconds > 300
+        for: 0s
+        labels:
+          severity: ticket
+        annotations:
+          summary: "定期ジョブ {{ $labels.job }} が 5 分以上成功していません"
+          description: "最後の成功から {{ $value | humanizeDuration }} たちました。worker のログ(service=\"worker\")と、カオス cronFail を確かめてください。"
+
+      # 定期ジョブの半分以上が失敗している(止まり切る前に気付くため)。
+      - alert: CronJobFailureRatioHigh
+        expr: job:cronjob_failure:ratio_rate5m > 0.5
+        for: 1m
+        labels:
+          severity: ticket
+        annotations:
+          summary: "定期ジョブ {{ $labels.job }} の失敗が多くなっています"
+          description: "直近 5 分の失敗率: {{ $value | humanizePercentage }}。"
+
+  # ---- デモ用: 定期ジョブの止まりを 1 分で鳴らす(本番では使いません) ----
+  # CHAOS_CRON_FAIL=true CRON_INTERVAL_SECONDS=10 docker compose up -d worker で、約 1〜2 分で鳴ります。
+  - name: cronjob-demo
+    rules:
+      - alert: CronJobStaleDemo
+        expr: time() - cronjob_last_success_timestamp_seconds > 60
+        # ふだん(60 秒ごとに成功)でも、次の成功が指標に載るまでの数秒は 60 秒を超えます。
+        # 一瞬の超えで鳴らないよう、30 秒続いたときだけ鳴らします(ジョブが止まれば約 1 分半で鳴ります)。
+        for: 30s
+        labels:
+          severity: demo
+          purpose: デモ用
+        annotations:
+          summary: "【デモ用】定期ジョブ {{ $labels.job }} が 1 分以上成功していません"
+          description: "演習用の短いしきい値のアラートです。本物の CronJobStale は 5 分で鳴ります。"
 
   - name: targets
     rules:
       # 指標を取りに行けない = そのサービスが落ちているかもしれない。
       - alert: TargetDown
-        expr: up{job=~"api|web"} == 0
+        expr: up{job=~"storefront|api|backoffice|worker"} == 0
         for: 1m
         labels:
           severity: page

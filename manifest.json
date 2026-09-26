@@ -1,0 +1,131 @@
+{
+  "$comment": "サンプルストアの構成の設計図です(このラボ独自の形)。各項目の意味は tools/manifest/README.md にあります。変えたら node tools/manifest/render.mjs で k8s/generated/ を作り直し、docker-compose.yml も手で合わせます(--check で食い違いを確かめられます)。",
+  "version": 1,
+  "name": "samplestore",
+  "namespace": "lab",
+  "images": {
+    "storefront": "lab/web:local",
+    "platform": "lab/api:local"
+  },
+  "secrets": {
+    "name": "lab-secrets",
+    "keys": ["PGPASSWORD", "BACKOFFICE_PASSWORD"]
+  },
+  "storefront": {
+    "service": "storefront",
+    "port": 4000,
+    "replicas": 2,
+    "ssr": {
+      "renderMode": "ssr",
+      "timeoutMs": 3000
+    },
+    "env": {
+      "API_INTERNAL_URL": "http://api:3001",
+      "API_PUBLIC_URL": "http://api.lab.localhost:18080",
+      "NG_ALLOWED_HOSTS": "www.lab.localhost,storefront,localhost,127.0.0.1"
+    },
+    "resources": { "cpu": "100m", "memory": "256Mi", "memoryLimit": "384Mi" }
+  },
+  "aspects": [
+    {
+      "name": "api",
+      "service": "api",
+      "port": 3001,
+      "replicas": 2,
+      "env": {
+        "CORS_ALLOWED_ORIGINS": "http://www.lab.localhost:18080",
+        "SEARCH_PROVIDER": "db"
+      },
+      "secretEnv": ["PGPASSWORD"],
+      "resources": { "cpu": "50m", "memory": "96Mi", "memoryLimit": "256Mi" }
+    },
+    {
+      "name": "backoffice",
+      "service": "backoffice",
+      "port": 3001,
+      "replicas": 1,
+      "env": {},
+      "secretEnv": ["PGPASSWORD", "BACKOFFICE_PASSWORD"],
+      "resources": { "cpu": "50m", "memory": "96Mi", "memoryLimit": "192Mi" }
+    },
+    {
+      "name": "backgroundProcessing",
+      "service": "worker",
+      "port": 3001,
+      "replicas": 1,
+      "env": {
+        "SEARCH_PROVIDER": "db",
+        "CRON_INTERVAL_SECONDS": "60"
+      },
+      "secretEnv": ["PGPASSWORD"],
+      "resources": { "cpu": "50m", "memory": "96Mi", "memoryLimit": "192Mi" }
+    }
+  ],
+  "tracing": {
+    "$comment": "本格版だけ。storefront と 3 つの aspect に OTEL_EXPORTER_OTLP_ENDPOINT を付け、トレースを OpenTelemetry Collector に送ります(軽量版にはトレースの道具が無いので付けません)",
+    "otlpEndpoint": "http://otel-collector:4318"
+  },
+  "commonEnv": {
+    "PGHOST": "db",
+    "PGPORT": "5432",
+    "PGDATABASE": "store",
+    "PGUSER": "store",
+    "LOG_LEVEL": "info"
+  },
+  "ipFilters": {
+    "$comment": "office = 社内の範囲。127.0.0.1/32 は cdn-waf が「ホスト PC から来た」と伝える番号、172.30.89.0/24 は軽量版の Docker ネットワーク、172.30.91.0/24 は本格版の kind のネットワーク(lab-kind。Playwright・k6 のコンテナなど)。社外の代わりのネットワーク(軽量版 172.30.90.0/24・本格版 172.30.92.0/24)は入れません",
+    "office": ["127.0.0.1/32", "172.30.89.0/24", "172.30.91.0/24"]
+  },
+  "endpoints": [
+    {
+      "name": "www",
+      "host": "www.lab.localhost",
+      "service": "storefront",
+      "ipFilter": null,
+      "blockedPaths": ["/metrics"],
+      "rateLimits": []
+    },
+    {
+      "name": "api",
+      "host": "api.lab.localhost",
+      "service": "api",
+      "ipFilter": null,
+      "blockedPaths": ["/admin", "/metrics", "/readyz"],
+      "rateLimits": [{ "path": "/authorizationserver/oauth/token", "rps": 1, "burst": 5 }]
+    },
+    {
+      "name": "backoffice",
+      "host": "backoffice.lab.localhost",
+      "service": "backoffice",
+      "ipFilter": "office",
+      "blockedPaths": ["/admin", "/metrics", "/readyz"],
+      "rateLimits": []
+    }
+  ],
+  "environments": {
+    "d1": {
+      "description": "開発環境。1 台ずつ、キャッシュなし(変えた物がすぐ見える)、お店も社内からだけ",
+      "replicas": { "storefront": 1, "api": 1, "backoffice": 1, "backgroundProcessing": 1 },
+      "cdnCache": false,
+      "ipFilterOverrides": { "www": "office", "api": "office" },
+      "searchProvider": "solr",
+      "env": { "LOG_LEVEL": "debug" }
+    },
+    "s1": {
+      "description": "ステージング(本番の手前の確認用)。本番と同じ設定で台数だけ少なめ、お店は社内からだけ",
+      "replicas": { "storefront": 1, "api": 2, "backoffice": 1, "backgroundProcessing": 1 },
+      "cdnCache": true,
+      "ipFilterOverrides": { "www": "office", "api": "office" },
+      "searchProvider": "solr",
+      "env": {}
+    },
+    "p1": {
+      "description": "本番。storefront と api を 2 台ずつ、キャッシュあり、お店は誰でも・backoffice は社内だけ",
+      "replicas": { "storefront": 2, "api": 2, "backoffice": 1, "backgroundProcessing": 1 },
+      "cdnCache": true,
+      "ipFilterOverrides": {},
+      "searchProvider": "solr",
+      "env": {}
+    }
+  }
+}

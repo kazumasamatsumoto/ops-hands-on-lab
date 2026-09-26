@@ -2,8 +2,8 @@
   <div class="wrap header-inner">
     <a routerLink="/" class="brand">サンプルストア</a>
     <nav class="nav">
-      <a routerLink="/products" routerLinkActive="active">商品一覧</a>
-      <a routerLink="/me/orders" routerLinkActive="active">注文履歴</a>
+      <a routerLink="/search" routerLinkActive="active">商品を探す</a>
+      <a routerLink="/my-account/orders" routerLinkActive="active">注文履歴</a>
       @if (auth.token()) {
         <button type="button" class="link-button" (click)="auth.logout()">ログアウト</button>
       } @else {

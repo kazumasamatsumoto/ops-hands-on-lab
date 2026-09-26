@@ -1,0 +1,78 @@
+# 検索(Solr)です。CCv2 では Solr が「検索サービス」として用意され、商品の索引を持ちます。
+#
+# ■ 1 回の検索の流れ
+#   ブラウザ → cdn-waf → ingress → api(SEARCH_PROVIDER=solr)→ http://search:8983/solr/products/select → 結果を OCC の形にして返す
+#   索引(本の巻末の「索引」と同じ。言葉 → 載っている商品の一覧)は、worker の searchIndexJob が 60 秒ごとに DB から作り直します。
+#   だから、管理画面で価格を変えても、検索結果に出るのは次の searchIndexJob のあとです。
+#
+# ■ 設定(configset)
+#   apps/api/solr/products/conf/ の schema.xml(項目の定義。日本語は 2 文字ずつ切る)と solrconfig.xml を、
+#   k8s/up.sh が ConfigMap solr-products-config に入れ、下でファイル 1 つずつつなぎます。
+#   起動のコマンド solr-precreate は「コア products が無ければ、この設定から作ってから Solr を起動する」公式イメージの仕組みです。
+#
+# ■ データは emptyDir(Pod が消えると消える一時置き場)に置きます。消えても worker が次の 60 秒で作り直すからです。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: search
+  labels: { app.kubernetes.io/name: search, app.kubernetes.io/part-of: samplestore }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: search }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: search, app.kubernetes.io/part-of: samplestore }
+    spec:
+      securityContext:
+        fsGroup: 8983 # 公式イメージの利用者 solr(8983)が /var/solr に書けるようにします
+      containers:
+        - name: solr
+          image: solr:9.10.1-slim
+          # args(command ではない)にして、公式イメージの入口(docker-entrypoint.sh)を通します。入口が /var/solr の準備もします。
+          args: ["solr-precreate", "products", "/opt/solr/server/solr/configsets/products"]
+          env:
+            # Java の使うメモリ(ヒープ)を小さく固定します。既定のままだと 512MB 取ろうとします。
+            - { name: SOLR_HEAP, value: 256m }
+          ports:
+            - { name: http, containerPort: 8983 }
+          # 準備できたか = コア products で検索できるか
+          readinessProbe:
+            httpGet: { path: "/solr/products/select?q=*:*&rows=0", port: http }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          startupProbe:
+            httpGet: { path: /solr/admin/info/health, port: http }
+            periodSeconds: 3
+            failureThreshold: 60
+          livenessProbe:
+            httpGet: { path: /solr/admin/info/health, port: http }
+            periodSeconds: 15
+            timeoutSeconds: 5
+            failureThreshold: 4
+          resources:
+            requests: { cpu: 100m, memory: 384Mi }
+            limits: { memory: 640Mi }
+          volumeMounts:
+            # ConfigMap をフォルダごとつなぐと、中身が「隠しフォルダへのリンク」になり、solr-precreate の cp でリンクが切れます。
+            # そのため subPath で 1 ファイルずつ、本物のファイルとしてつなぎます。
+            - { name: configset, mountPath: /opt/solr/server/solr/configsets/products/conf/schema.xml, subPath: schema.xml, readOnly: true }
+            - { name: configset, mountPath: /opt/solr/server/solr/configsets/products/conf/solrconfig.xml, subPath: solrconfig.xml, readOnly: true }
+            - { name: data, mountPath: /var/solr }
+      volumes:
+        - name: configset
+          configMap: { name: solr-products-config }
+        - name: data
+          emptyDir: {}
+---
+# api と worker は http://search:8983/solr/products で届きます(api の SOLR_URL の既定値)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: search
+  labels: { app.kubernetes.io/name: search, app.kubernetes.io/part-of: samplestore }
+spec:
+  selector: { app.kubernetes.io/name: search }
+  ports:
+    - { name: http, port: 8983, targetPort: http }

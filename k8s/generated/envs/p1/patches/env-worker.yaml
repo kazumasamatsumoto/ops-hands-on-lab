@@ -1,0 +1,13 @@
+# このファイルは tools/manifest/render.mjs が manifest.json から作りました。手で直さず、manifest.json を直して作り直してください。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: worker
+spec:
+  template:
+    spec:
+      containers:
+        - name: worker
+          env:
+            - name: SEARCH_PROVIDER
+              value: solr

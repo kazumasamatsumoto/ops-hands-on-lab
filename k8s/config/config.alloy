@@ -1,26 +1,41 @@
-// 本格版(Kubernetes)の Grafana Alloy の設定です。lab の部屋(Namespace)の Pod のログを読み、Loki へ送ります。
-// 軽量版(observability/alloy/config.alloy)は Docker のソケットから読みましたが、本格版では Kubernetes の API から読みます
-// (kubectl logs と同じ仕組みです)。付けるラベルは軽量版と同じ(project / service / container)にしてあるので、
-// Grafana のダッシュボードのログのパネルはそのまま使えます。
+// 本格版(Kubernetes)の Grafana Alloy の設定です。Pod のログを Kubernetes の API から読み、Loki へ送ります。
+// 軽量版(observability/alloy/config.alloy)は Docker のソケットから読みましたが、本格版では kubectl logs と同じ仕組みで読みます。
+// 付けるラベルは軽量版と同じ(project・service・container)にしてあるので、Grafana のダッシュボードのログのパネルはそのまま使えます。
+//
+// cdn-waf はクラスタの外(ただの Docker のコンテナ)なので、ここでは集めません。見るときは docker logs <クラスタ名>-cdn-waf。
+// CCv2 でも、CDN・WAF のログはお客さんの側の契約で見るもので、Cloud Portal のログ(OpenSearch)には入りません。
 
-// 1. lab の部屋にいる Pod の一覧を Kubernetes から教えてもらう
+// 1. lab の部屋と ingress-nginx の部屋にいる Pod の一覧を Kubernetes から教えてもらう
 discovery.kubernetes "pods" {
   role = "pod"
   namespaces {
-    names = ["lab"]
+    names = ["lab", "ingress-nginx"]
   }
 }
 
 // 2. Loki で探しやすいよう、ラベル(付箋)を付ける
-//    service   … Pod の app ラベル(api, web, edge, db など)
+//    service   … Pod のラベル app.kubernetes.io/name(storefront・api・backoffice・worker・db・search・prometheus など)
+//                ingress-nginx のコントローラーは、軽量版と同じ名前 ingress にします
 //    pod       … Pod の名前(同じ service でも、どの Pod のログか分かる)
 //    container … コンテナの名前
 discovery.relabel "pods" {
   targets = discovery.kubernetes.pods.targets
 
   rule {
-    source_labels = ["__meta_kubernetes_pod_label_app"]
+    source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
     target_label  = "service"
+  }
+  rule {
+    source_labels = ["__meta_kubernetes_namespace", "__meta_kubernetes_pod_label_app_kubernetes_io_component"]
+    regex         = "ingress-nginx;controller"
+    target_label  = "service"
+    replacement   = "ingress"
+  }
+  // ingress-nginx の部屋の、コントローラー以外(最初に 1 回だけ動く準備の Job)は集めません。
+  rule {
+    source_labels = ["__meta_kubernetes_namespace", "service"]
+    regex         = "ingress-nginx;ingress-nginx"
+    action        = "drop"
   }
   rule {
     source_labels = ["__meta_kubernetes_pod_name"]
@@ -43,6 +58,8 @@ loki.source.kubernetes "pods" {
 }
 
 // 4. JSON のログから「レベル」を取り出してラベルにする(軽量版と同じ)
+//    trace_id はラベルにしません(値の種類が多すぎて Loki が重くなるため)。ログの本文に入ったままでも、
+//    Grafana の Loki のデータソースの「derived field」が本文から trace_id を見つけて、Tempo へのリンクにします。
 loki.process "json" {
   stage.json {
     expressions = { level = "level" }

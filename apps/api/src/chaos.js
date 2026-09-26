@@ -3,6 +3,11 @@
 //
 // たとえ: 工場の配電盤に並んだブレーカーです。1 つずつ上げ下げして、
 // 「この部品が壊れたら全体はどう見えるか」を安全な場所で試します。
+//
+// スイッチはどの aspect にもありますが、効く場所は決まっています。
+//   api        : latencyMs・errorRate・leakMb・idorBug・sqliBug
+//   worker     : cronFail(定期ジョブをわざと失敗させる)
+'use strict';
 
 function toNumber(value, fallback) {
   if (value === undefined || value === null || value === '') return fallback;
@@ -17,30 +22,32 @@ function toBool(value, fallback) {
 }
 
 const DEFAULTS = Object.freeze({
-  latencyMs: 0, // すべての /api に足す遅延(ミリ秒)
+  latencyMs: 0, // すべての OCC API に足す遅延(ミリ秒)
   errorRate: 0, // 0〜1。この割合で 500 を返す
   leakMb: 0, // リクエストのたびにため込むメモリ(MB)。0 以外だと最後は落ちます
   idorBug: false, // true: 注文詳細で持ち主を確かめない(他人の注文が見える)
   sqliBug: false, // true: 検索語を文字列連結で SQL に入れる(SQL インジェクション)
+  cronFail: false, // true: worker の定期ジョブがすべて失敗する
 });
 
-export const chaos = {
+const chaos = {
   latencyMs: toNumber(process.env.CHAOS_LATENCY_MS, DEFAULTS.latencyMs),
   errorRate: toNumber(process.env.CHAOS_ERROR_RATE, DEFAULTS.errorRate),
   leakMb: toNumber(process.env.CHAOS_LEAK_MB, DEFAULTS.leakMb),
   idorBug: toBool(process.env.CHAOS_IDOR_BUG, DEFAULTS.idorBug),
   sqliBug: toBool(process.env.CHAOS_SQLI_BUG, DEFAULTS.sqliBug),
+  cronFail: toBool(process.env.CHAOS_CRON_FAIL, DEFAULTS.cronFail),
 };
 
 // ため込んだメモリ(leakMb 用)。わざと解放しないように配列で持ち続けます。
 const leaked = [];
 
-export function leakedMb() {
+function leakedMb() {
   return leaked.length === 0 ? 0 : leaked.reduce((sum, b) => sum + b.length, 0) / 1024 / 1024;
 }
 
 // 値を検査してから反映します。知らない名前や変な値は 400 にするため、エラーの一覧を返します。
-export function updateChaos(input) {
+function updateChaos(input) {
   const errors = [];
   const next = { ...chaos };
   if (input === null || typeof input !== 'object') {
@@ -77,8 +84,8 @@ export function updateChaos(input) {
   return { errors: [] };
 }
 
-// /api/* の前に通す関門です。遅延・エラー・メモリ漏れをここで起こします。
-export async function chaosMiddleware(req, res, next) {
+// OCC API の前に通す関門です。遅延・エラー・メモリ漏れをここで起こします。
+async function chaosMiddleware(req, res, next) {
   if (chaos.leakMb > 0) {
     // Buffer.alloc は中身を 0 で埋めるので、実際にメモリ(RSS)が増えます。
     leaked.push(Buffer.alloc(Math.floor(chaos.leakMb * 1024 * 1024), 1));
@@ -88,8 +95,27 @@ export async function chaosMiddleware(req, res, next) {
   }
   if (chaos.errorRate > 0 && Math.random() < chaos.errorRate) {
     req.log?.warn({ chaos: 'errorRate' }, 'chaos: わざと 500 を返します');
-    res.status(500).json({ error: 'internal_error', message: 'わざと起こしたエラーです(chaos errorRate)' });
+    res.status(500).json({ errors: [{ type: 'ChaosError', message: 'わざと起こしたエラーです(chaos errorRate)' }] });
     return;
   }
   next();
 }
+
+// GET/POST /admin/chaos を付けます。/admin/* は ingress で外から届かないようにしています。
+function mountChaosAdmin(app) {
+  app.get('/admin/chaos', (req, res) => {
+    res.json({ ...chaos, leakedMb: Math.round(leakedMb()) });
+  });
+  // POST /admin/chaos { "latencyMs": 1500 } のように、変えたいものだけ送ります。{ "reset": true } で全部元に戻します。
+  app.post('/admin/chaos', (req, res) => {
+    const { errors } = updateChaos(req.body);
+    if (errors.length > 0) {
+      res.status(400).json({ errors: errors.map((message) => ({ type: 'ValidationError', message })) });
+      return;
+    }
+    req.log.warn({ chaos: { ...chaos } }, 'カオススイッチを変更しました');
+    res.json({ ...chaos, leakedMb: Math.round(leakedMb()) });
+  });
+}
+
+module.exports = { chaos, chaosMiddleware, leakedMb, updateChaos, mountChaosAdmin };

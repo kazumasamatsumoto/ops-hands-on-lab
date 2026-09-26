@@ -14,12 +14,14 @@ export default defineConfig({
   themeConfig: {
     nav: [
       { text: 'はじめに', link: '/guide/about' },
+      { text: '仕組み', link: '/how-it-works/00-overview' },
       { text: '必要なこと一覧', link: '/guide/checklist' },
       { text: '演習', link: '/exercises/01-fe-ssr-vs-csr' },
       { text: 'ラボの設計書', link: '/design/architecture/00-overall' },
     ],
     sidebar: [
       { text: 'はじめに', items: items('guide') },
+      { text: '仕組み(どう動いているか)', items: items('how-it-works') },
       { text: '演習(触って覚える)', items: items('exercises') },
       { text: 'ラボの方式設計書', collapsed: true, items: items('architecture') },
       { text: 'ラボの詳細設計書', collapsed: true, items: items('detail') },

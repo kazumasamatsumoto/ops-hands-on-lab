@@ -1,26 +1,28 @@
 # 本格版(kind = Docker の中で動く Kubernetes)のクラスタ定義です。
 #
-#   作る:   kind create cluster --config k8s/kind-config.yaml   (ふだんは k8s/up.sh が代わりにやります)
-#   消す:   kind delete cluster --name lab                     (k8s/down.sh)
+#   作る:   k8s/up.sh が代わりにやります(中では kind create cluster --name lab --config k8s/kind-config.yaml)
+#   消す:   k8s/down.sh
 #
 # ノード(Kubernetes が Pod を置く台)は 1 台だけです。メモリを節約するためです。
-# kind のノードは「Docker のコンテナ 1 個」です。その中にさらに Pod(アプリのコンテナ)が入ります。
+# kind のノードは「Docker のコンテナ 1 個」(名前は <クラスタ名>-control-plane)です。その中にさらに Pod が入ります。
 #
-# ホスト側のポートは軽量版(docker compose)と同じ番号にしています。
-# そのため、軽量版と本格版を同時に動かすことはできません(先に docker compose down してください)。
-#   ホスト 18080 → ノードの 30080 → edge の Service(NodePort)
-#   ホスト 13000 → 30300 → Grafana / 19090 → 30090 → Prometheus
-#   ホスト 19093 → 30093 → Alertmanager / 19094 → 30094 → pager
+# ■ お店の入口(18080)はここには書きません
+#   お店の入口は、クラスタの「外」の cdn-waf コンテナ(k8s/up.sh が docker run で起動)が 127.0.0.1:18080 で受けます。
+#   cdn-waf は、同じ Docker ネットワーク(lab-kind)にいるノードの 80 番(ingress-nginx)へ送ります。
+#   CCv2 で「CDN・WAF はお客さんのクラウドの契約、クラスタは SAP の中」と分かれているのと同じ形です。
+#
+# ■ ここに書くのは、観測の道具の画面だけです(ホストのポート → ノードのポート → Service の NodePort)
+#   13000 → 30300 Grafana / 19090 → 30090 Prometheus / 19093 → 30093 Alertmanager / 19094 → 30094 pager
+#   軽量版と同じ番号なので、軽量版と本格版を同時に動かすことはできません(先に docker compose down してください)。
+#   番号を変えたいときは、このファイルを写して hostPort を変え、LAB_KIND_CONFIG=写したファイル k8s/up.sh とします。
 kind: Cluster
 apiVersion: kind.x-k8s.io/v1alpha4
-name: lab
 nodes:
   - role: control-plane
     # kind v0.30.0 の既定のノードイメージです(バージョンを固定しています)。
     image: kindest/node:v1.34.0
     extraPortMappings:
       # listenAddress を 127.0.0.1 にして、同じネットワークの他の PC からは見えないようにします。
-      - { containerPort: 30080, hostPort: 18080, listenAddress: "127.0.0.1", protocol: TCP } # edge(お店の入口)
       - { containerPort: 30300, hostPort: 13000, listenAddress: "127.0.0.1", protocol: TCP } # Grafana
       - { containerPort: 30090, hostPort: 19090, listenAddress: "127.0.0.1", protocol: TCP } # Prometheus
       - { containerPort: 30093, hostPort: 19093, listenAddress: "127.0.0.1", protocol: TCP } # Alertmanager

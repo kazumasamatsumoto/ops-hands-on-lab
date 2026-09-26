@@ -1,7 +1,7 @@
-# サンプルストア web(Angular 21 SSR)のイメージ
+# サンプルストア storefront(Angular 21 SSR)のイメージ
 # 2 段階ビルド: 1 段目でビルドし、2 段目には出来上がったファイルだけを入れます(小さく、余計な道具を持たない)。
 #   ビルド:  docker build -t samplestore-web apps/web
-#   起動:    docker run --rm -p 4000:4000 -e API_INTERNAL_URL=http://api:3001 samplestore-web
+#   起動:    docker run --rm -p 4000:4000 -e API_INTERNAL_URL=http://api:3001 -e API_PUBLIC_URL=http://api.lab.localhost:18080 samplestore-web
 
 # ---- 1 段目: ビルド ----
 FROM node:24.21.0-bookworm-slim AS build
@@ -20,7 +20,8 @@ ENV NODE_ENV=production \
     RENDER_MODE=ssr \
     SSR_TIMEOUT_MS=3000 \
     SSR_WINDOW_BUG=false \
-    API_INTERNAL_URL=http://api:3001
+    API_INTERNAL_URL=http://api:3001 \
+    API_PUBLIC_URL=http://api.lab.localhost:18080
 WORKDIR /app
 COPY --from=build --chown=node:node /app/dist/web ./dist/web
 # root では動かさない(乗っ取られたときの被害を小さくする)

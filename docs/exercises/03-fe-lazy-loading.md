@@ -5,9 +5,11 @@ title: FE-3 遅延読み込みと JS の予算
 # FE-3 遅延読み込みと JS の予算
 
 ::: info この演習について
-- 所要時間: 約 20 分(ビルド 1 回 30 秒ほど × 3 回)
+- 所要時間: 約 20 分(ビルド 1 回 20 秒ほど × 3 回)
 - 使うもの: 軽量版(docker compose)。Docker でのビルド、ブラウザの開発者ツール
+- 仕組みはこちら: [仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)
 - 関係する設計書: [FE 方式](/design/architecture/01-frontend)・[性能方式](/design/architecture/07-performance)
+- 用語集: [遅延読み込み](/guide/glossary#lazy-loading)・[チャンク](/guide/glossary#chunk)・[JS の予算(budgets)](/guide/glossary#budgets)
 :::
 
 ## 1. この設計書はなぜ必要か
@@ -23,19 +25,24 @@ title: FE-3 遅延読み込みと JS の予算
 
 ## 2. 何をやっているのか
 
-サンプルストアの web は、注文履歴(`/me/orders`)の部品を「その画面を開いたときに初めて読み込む別ファイル(チャンク)」にしています(`apps/web/src/app/app.routes.ts` の `loadChildren`)。
+storefront は、注文履歴(`/my-account/orders`)の部品を「その画面を開いたときに初めて読み込む別ファイル(チャンク)」にしています(`apps/web/src/app/app.routes.ts` の `loadChildren`)。
 また `apps/web/angular.json` の `budgets` に「最初に読み込む JS と CSS の合計は 400kB で警告、450kB でビルド失敗」と書いてあります。
 演習では、①ビルドの結果で大きさを見る、②予算をわざと下げてビルドが落ちるのを見る、③遅延読み込みをやめると最初の JS が増えるのを見る、④ブラウザで注文履歴を開いた瞬間にチャンクが届くのを見る、の順に進みます。
 
 たとえ: **遅延読み込みは「旅行の荷物のうち、現地で必要になった物だけ後から宅配便で送ってもらう」** ことです。最初に持つ荷物(最初の JS)が軽いほど、早く出発(表示)できます。
 **予算は「機内持ち込みは 7kg まで」の決まり** です。量りに載せて超えていたら、その場で搭乗(リリース)できません。
 
+::: tip CCv2 では
+Composable Storefront の案件でも、画面の機能(部品)を足すほど JS は太ります。CCv2 のビルドは storefront の `ng build` をそのまま動かすので、
+`angular.json` の budgets で失敗すれば、Cloud Portal のビルドも失敗します(= 太った版は配られない)。予算は「ビルドの関所」として働きます。
+:::
+
 ## 3. まず触ってみる
 
-1. **いまの大きさを量る**。web のイメージの「ビルドの段」だけを動かします(アプリは止まりません)。
+1. **いまの大きさを量る**。storefront のイメージの「ビルドの段」だけを動かします(動いているお店は止まりません)。
 
    ```bash
-   docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | grep -A10 'Browser bundles'
+   docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | grep -A8 'Initial chunk files'
    ```
 
    `Initial`(最初に読む物)と `Lazy`(後から読む物)に分かれて表示されます。
@@ -63,21 +70,22 @@ title: FE-3 遅延読み込みと JS の予算
 
    ```diff
     import { NotFoundPage } from './pages/not-found';
-   +import { ORDER_ROUTES } from './orders/orders.routes';
+   +import { ORDER_ROUTES } from './my-account/orders.routes';
    ...
-        path: 'me/orders',
-   -    loadChildren: () => import('./orders/orders.routes').then((m) => m.ORDER_ROUTES),
+        path: 'my-account/orders',
+   -    loadChildren: () => import('./my-account/orders.routes').then((m) => m.ORDER_ROUTES),
    +    children: ORDER_ROUTES,
    ```
 
    ```bash
-   docker build --target build --progress=plain apps/web 2>&1 | grep -A8 'Browser bundles'
+   docker build --target build --progress=plain apps/web 2>&1 | grep -A6 'Initial chunk files'
    cp /tmp/app.routes.ts.bak apps/web/src/app/app.routes.ts    # 必ず元に戻す
    ```
 
-4. **ブラウザでチャンクが届く瞬間を見る**。http://localhost:18080/products を開き、開発者ツール(F12、Mac は option+command+I)の「ネットワーク」タブで「JS」に絞ります。
-   画面上の「注文履歴」をクリックすると、その瞬間に `chunk-` で始まる小さなファイルが 1 つ増えます。
-   開発者ツールの「コンソール」に次を貼っても同じことが確かめられます。
+4. **ブラウザでチャンクが届く瞬間を見る**。http://www.lab.localhost:18080/ を開き、開発者ツール(F12、Mac は option+command+I)の「ネットワーク」タブで「JS」に絞ります。
+   画面上の「注文履歴」をクリックすると、その瞬間に `chunk-` で始まる小さなファイルが 1 つ増えます(ログインしていなければ「注文履歴を見るには ログイン してください。」と出ますが、チャンクは読み込まれます)。
+   開発者ツールの「コンソール」に次を貼っても、読み込んだ JS の一覧が見られます。クリックの前と後で比べます。
+   Chrome で初めてコンソールに貼ると、貼り付けについての警告が出て、貼れないことがあります。そのときは、コンソールに `allow pasting`(Chrome の表示が日本語なら `貼り付けを許可`)と手で打って Enter を押してから、もう一度貼ります。
 
    ```js
    performance.getEntriesByType('resource').filter(e => e.name.endsWith('.js')).map(e => e.name.split('/').pop())
@@ -85,43 +93,47 @@ title: FE-3 遅延読み込みと JS の予算
 
 ## 4. 何が見えたら成功か
 
-**手順 1**: 最初に読む物は合計 約 320kB(通信では圧縮されて約 89kB)。注文履歴は 5kB の別ファイルです。
+**手順 1**: 最初に読む物は合計 約 336kB(通信では圧縮されて約 93kB)。注文履歴は 5.6kB の別ファイルです。
 
 ```text
-Initial chunk files  | Names            |  Raw size | Estimated transfer size
-chunk-W2E5YAUG.js    | -                | 302.95 kB |                84.00 kB
-main-VH6364XH.js     | main             |  12.82 kB |                 3.77 kB
-styles-5DWUVF7I.css  | styles           |   4.18 kB |                 1.11 kB
-                     | Initial total    | 319.96 kB |                88.89 kB
+Initial chunk files  | Names                    |  Raw size | Estimated transfer size
+chunk-MLVPJDFE.js    | -                        | 309.95 kB |                85.91 kB
+main-CFZS6IQK.js     | main                     |  21.53 kB |                 5.97 kB
+styles-CTOKCG3W.css  | styles                   |   4.84 kB |                 1.24 kB
 
-Lazy chunk files     | Names            |  Raw size | Estimated transfer size
-chunk-ZOC7GVMD.js    | orders-routes    |   5.21 kB |                 1.68 kB
+                     | Initial total            | 336.32 kB |                93.12 kB
+
+Lazy chunk files     | Names                    |  Raw size | Estimated transfer size
+chunk-6ORWLTRG.js    | orders-routes            |   5.61 kB |                 1.78 kB
 ```
 
-**手順 2**: 予算 300kB を 19.96kB 超えたので、ビルドが止まりイメージが作られません。
+(ファイル名の英数字の部分と、数 kB の大きさは、ビルドのたびや版によって変わります。)
+
+**手順 2**: 予算 300kB を 36.32kB 超えたので、ビルドが止まりイメージが作られません。
 
 ```text
-                     | Initial total    | 319.96 kB |                88.89 kB
-✘ [ERROR] bundle initial exceeded maximum budget. Budget 300.00 kB was not met by 19.96 kB with a total of 319.96 kB.
-ERROR: failed to build: failed to solve: process "/bin/sh -c npx ng build --configuration production" did not complete successfully: exit code: 1
+                     | Initial total            | 336.32 kB |                93.12 kB
+✘ [ERROR] bundle initial exceeded maximum budget. Budget 300.00 kB was not met by 36.32 kB with a total of 336.32 kB.
+ERROR: process "/bin/sh -c npx ng build --configuration production" did not complete successfully: exit code: 1
 ```
 
-**手順 3**: `Lazy chunk files` の欄が消え、注文履歴の部品が最初の JS に混ざって、合計が約 4kB 増えます。
+**手順 3**: `Lazy chunk files` の欄が消え、注文履歴の部品が最初の JS(`main`)に混ざって、合計が約 4kB 増えます。
 
 ```text
-Initial chunk files  | Names            |  Raw size | Estimated transfer size
-main-FB2COGFI.js     | main             | 319.98 kB |                87.91 kB
-styles-5DWUVF7I.css  | styles           |   4.18 kB |                 1.11 kB
-                     | Initial total    | 324.17 kB |                89.02 kB
+Initial chunk files  | Names                    |  Raw size | Estimated transfer size
+main-HBBLQ6BE.js     | main                     | 335.85 kB |                91.84 kB
+styles-CTOKCG3W.css  | styles                   |   4.84 kB |                 1.24 kB
+
+                     | Initial total            | 340.69 kB |                93.08 kB
 ```
 
 この演習の注文履歴は小さいので差は 4kB ですが、グラフや地図、リッチな入力欄などの大きな部品では、ここが 100kB 単位で変わります。
 
-**手順 4**: 注文履歴をクリックする前と後で、読み込んだ JS が 1 つ増えます(ファイル名はビルドごとに変わります)。
+**手順 4**: 注文履歴をクリックする前と後で、読み込んだ JS が 1 つ増えます。
 
 ```text
-クリック前: chunk-W2E5YAUG.js, main-VH6364XH.js
-クリック後: chunk-W2E5YAUG.js, main-VH6364XH.js, chunk-ZOC7GVMD.js (5,506 バイト)
+クリック前: main-….js, chunk-MLVPJDFE.js
+クリック後: main-….js, chunk-MLVPJDFE.js, chunk-6ORWLTRG.js   ← orders-routes のチャンク
 ```
 
 ## 5. ここで覚える言葉
@@ -129,19 +141,19 @@ styles-5DWUVF7I.css  | styles           |   4.18 kB |                 1.11 kB
 | 言葉 | 一言でいうと | たとえ | この演習で見たもの |
 | --- | --- | --- | --- |
 | バンドル | ブラウザに送るためにまとめた JS のファイル | 旅行かばんに詰めた荷物 | `main-….js`、`chunk-….js` |
-| 初期読み込み(Initial) | 最初の画面を出すために必ず読む JS | 出発時に持つ荷物 | `Initial total 319.96 kB` |
-| 遅延読み込み(Lazy loading) | その画面を開いたときに初めて読む | 現地で必要になった物を後から宅配 | `orders-routes` の 5kB のチャンク |
-| チャンク | 分けて作った JS の 1 かたまり | 宅配便の 1 箱 | 注文履歴を開いたときに届いた `chunk-ZOC7GVMD.js` |
-| 性能予算(バジェット) | 大きさの上限。超えたらビルドを落とす | 機内持ち込みは 7kg まで | `bundle initial exceeded maximum budget` |
-| 転送サイズ | 通信で実際に送る大きさ(圧縮後) | 圧縮袋に入れた後の体積 | `Estimated transfer size 88.89 kB` |
+| 初期読み込み(Initial) | 最初の画面を出すために必ず読む JS | 出発時に持つ荷物 | `Initial total 336.32 kB` |
+| [遅延読み込み](/guide/glossary#lazy-loading) | その画面を開いたときに初めて読む | 現地で必要になった物を後から宅配 | `orders-routes` の 5.6kB のチャンク |
+| [チャンク](/guide/glossary#chunk) | 分けて作った JS の 1 かたまり | 宅配便の 1 箱 | 注文履歴を開いたときに届いた `chunk-….js` |
+| [JS の予算(budgets)](/guide/glossary#budgets) | 大きさの上限。超えたらビルドを落とす | 機内持ち込みは 7kg まで | `bundle initial exceeded maximum budget` |
+| 転送サイズ | 通信で実際に送る大きさ(圧縮後) | 圧縮袋に入れた後の体積 | `Estimated transfer size 93.12 kB` |
 
 ## 6. 設計書ではここに書く
 
 - **[FE 方式 4.4 遅延読み込みと JS の予算](/design/architecture/01-frontend#s4-4)**:
-  「ログインが要る画面(注文履歴など)と、使う人が少ない画面は遅延読み込みにする」「大きなライブラリはトップ・商品一覧・商品詳細から import しない」「最初に読む JS と CSS の合計は 400kB で警告、450kB でビルド失敗」「予算を上げるときは理由を書いてレビューを通す」。
+  「ログインが要る画面(注文履歴など)と、使う人が少ない画面は遅延読み込みにする」「大きなライブラリはトップ・商品詳細・検索から import しない」「最初に読む JS と CSS の合計は 400kB で警告、450kB でビルド失敗」「予算を上げるときは理由を書いてレビューを通す」。
 - **[性能方式 4.3 最初に読む JS を抑える](/design/architecture/07-performance#s4-3)**: 予算の数字はビルドの `Initial total`(圧縮前)で測る、と測る物差しをそろえておきます。
 - **[FE 方式 5 目標](/design/architecture/01-frontend#s5)**: 予算の数字そのもの。
-- 一般のカタログの **D-FE 系の画面設計書**(例: [D-FE-04 商品詳細画面](/design/detail/D-FE-04-product-detail))には、その画面が最初の JS に入るか遅延読み込みかを 1 行書きます。
+- **[D-FE-04 商品詳細画面](/design/detail/D-FE-04-product-detail)** のような画面ごとの設計書には、その画面が最初の JS に入るか遅延読み込みかを 1 行書きます。
 
 ## 7. レビューで聞く質問
 
@@ -160,4 +172,4 @@ diff /tmp/angular.json.bak apps/web/angular.json && diff /tmp/app.routes.ts.bak 
 rm -f /tmp/angular.json.bak /tmp/app.routes.ts.bak
 ```
 
-演習のビルドはイメージに名前を付けていないので、動いている web には影響しません。ビルドの途中の物を消したいときは `docker builder prune` です(ほかのビルドの途中の物も消えるので注意)。
+演習のビルドはイメージに名前を付けていないので、動いている storefront には影響しません。ビルドの途中の物を消したいときは `docker builder prune` です(ほかのビルドの途中の物も消えるので注意)。

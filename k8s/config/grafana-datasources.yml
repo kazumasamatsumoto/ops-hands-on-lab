@@ -1,0 +1,48 @@
+# 本格版の Grafana のデータソースです。軽量版(observability/grafana/provisioning/datasources/datasources.yml)に、
+# トレースの Tempo と、ログ → トレースのつなぎ(derived field)を足しています。
+apiVersion: 1
+
+datasources:
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    jsonData:
+      timeInterval: 5s
+
+  - name: Loki
+    uid: loki
+    type: loki
+    access: proxy
+    url: http://loki:3100
+    jsonData:
+      # derived field = ログの本文から値を取り出して、リンクにする仕組みです。
+      # api・storefront の JSON ログの "trace_id":"…" を見つけると、ログの詳細に「Tempo で道筋を見る」ボタンが出ます。
+      derivedFields:
+        - name: trace_id
+          matcherType: regex
+          matcherRegex: '"trace_id":"([0-9a-f]{32})"'
+          datasourceUid: tempo
+          url: "$${__value.raw}"
+          urlDisplayLabel: Tempo で道筋を見る
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    jsonData:
+      # トレース → ログ: 道筋の区間から、同じ trace_id のログ(Loki)へ飛べるようにします。
+      tracesToLogsV2:
+        datasourceUid: loki
+        filterByTraceID: true
+        spanStartTimeShift: "-1m"
+        spanEndTimeShift: "1m"
+        customQuery: true
+        query: '{project="lab"} |= "$${__trace.traceId}"'
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false

@@ -3,11 +3,24 @@
 #   起動:   docker compose up -d --build
 #   停止:   docker compose down        (データも消すなら docker compose down -v)
 #
+# 形は CCv2(SAP Commerce Cloud)でヘッドレスのお店を動かすときに寄せています。
+#
+#   ブラウザ ─▶ cdn-waf ─▶ ingress ─┬─ www.lab.localhost        ─▶ storefront(Angular SSR)
+#   (18080)   CDN・WAF    入口      ├─ api.lab.localhost        ─▶ api        (ASPECT=api)
+#             クラスタの外             └─ backoffice.lab.localhost ─▶ backoffice (ASPECT=backoffice。社内 IP だけ)
+#                                       (外に出さない)                 worker     (ASPECT=backgroundProcessing)
+#                                                                      db         (PostgreSQL)
+#
+# api・backoffice・worker は同じイメージ(apps/api)を、環境変数 ASPECT で役割を変えて動かします(CCv2 の aspect と同じ考え方)。
+# 同じ構成を manifest.json に書き、tools/manifest/render.mjs が本格版(Kubernetes)の定義を作ります。
+# このファイルは手で manifest.json に合わせています(台数・環境変数・エンドポイントを変えたら両方直します)。
+#
 # ホスト側のポート(ブラウザで開く番号):
-#   edge(お店の入口) 18080 / Grafana 13000 / Prometheus 19090 / Alertmanager 19093 / pager 19094
+#   cdn-waf(お店の入口。3 つのホスト名すべて) 18080 / Grafana 13000 / Prometheus 19090 / Alertmanager 19093 / pager 19094
 #   8080 や 3000 は他のアプリとよくぶつかるので、1 万番台にしています。
 #
-# メモリの上限は合計でおよそ 2GB です(Docker Desktop に 8GB 割り当てていれば余裕があります)。
+# 演習でよく変えるつまみは、「EDGE_CACHE=off docker compose up -d cdn-waf」のように、コマンドの前に書いて一時的に変えられます
+# (書かなければ ${名前:-既定値} の既定値)。一覧は README.md の「調整できるところ」にあります。
 
 name: lab
 
@@ -15,12 +28,32 @@ include:
   # 観測(Prometheus・Alertmanager・Grafana・Loki・Alloy・pager)は別ファイルにまとめています。
   - observability/compose.yml
 
+# api・backoffice・worker に共通の設定(YAML の「アンカー」。&名前 で印を付け、<<: *名前 で使い回します)
+x-aspect-common: &aspect-common
+  build: ./apps/api
+  image: lab/api:local
+  depends_on:
+    db:
+      condition: service_healthy
+  restart: unless-stopped
+
+x-db-env: &db-env
+  PORT: "3001"
+  PGHOST: db
+  PGDATABASE: store
+  PGUSER: store
+  # ラボ専用の見本の値です。本番では値をここに書かず、Secret(CCv2 では Cloud Portal の環境変数・秘密の置き場所)から渡します。
+  PGPASSWORD: store
+  LOG_LEVEL: info
+  # 検索の実体。軽量版は DB の検索(Solr は本格版だけ)。api と worker で同じ値にします。
+  SEARCH_PROVIDER: db
+
 services:
   # ---------- データベース ----------
   db:
     image: postgres:17.11-alpine
     environment:
-      # ラボ専用の見本の値です。本番では秘密の値を別の仕組み(Secret など)で渡します。
+      # ラボ専用の見本の値です。
       POSTGRES_USER: store
       POSTGRES_PASSWORD: store
       POSTGRES_DB: store
@@ -34,82 +67,116 @@ services:
     mem_limit: 256m
     restart: unless-stopped
 
-  # ---------- API(商品・ログイン・注文) ----------
+  # ---------- api(ASPECT=api): OCC 風の REST API・OAuth・商品画像 ----------
   api:
-    build: ./apps/api
-    image: lab/api:local
+    <<: *aspect-common
     environment:
-      PORT: "3001"
-      PGHOST: db
-      PGUSER: store
-      PGPASSWORD: store
-      PGDATABASE: store
-      # ラボ用の署名鍵です(本物の秘密ではありません)。
-      # 本番では、ここに値を書かず、リポジトリに入れない .env ファイルや Secret から渡します(演習 インフラ-2)。
-      JWT_SECRET: ${JWT_SECRET:-lab-only-not-a-real-secret}
-      LOG_LEVEL: info
+      <<: *db-env
+      ASPECT: api
+      # ブラウザから呼んでよいオリジン(storefront の住所)。CCv2 の corsfilter の設定に当たります。
+      CORS_ALLOWED_ORIGINS: http://www.lab.localhost:18080
       # わざと壊すスイッチの「起動時の値」。動かしながら変えるときは tools/chaos.sh を使います。
-      # 「CHAOS_LEAK_MB=20 docker compose up -d api」のように、コマンドの前に書いて起動時の値を変えられます(演習 障害-2)。
+      # 「CHAOS_LEAK_MB=20 docker compose up -d api」のように、コマンドの前に書いて起動時の値を変えられます。
       CHAOS_LATENCY_MS: ${CHAOS_LATENCY_MS:-0}
       CHAOS_ERROR_RATE: ${CHAOS_ERROR_RATE:-0}
       CHAOS_LEAK_MB: ${CHAOS_LEAK_MB:-0}
       CHAOS_IDOR_BUG: ${CHAOS_IDOR_BUG:-false}
       CHAOS_SQLI_BUG: ${CHAOS_SQLI_BUG:-false}
-    depends_on:
-      db:
-        condition: service_healthy
-    healthcheck:
-      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:3001/readyz"]
-      interval: 5s
-      timeout: 3s
-      start_period: 20s
-      retries: 5
     # leakMb の演習では、この上限を超えたところでコンテナが強制終了(OOM)され、自動で再起動します。
     mem_limit: 256m
-    restart: unless-stopped
 
-  # ---------- 画面(Angular SSR) ----------
-  web:
+  # ---------- backoffice(ASPECT=backoffice): 社内向けの管理画面 ----------
+  backoffice:
+    <<: *aspect-common
+    environment:
+      <<: *db-env
+      ASPECT: backoffice
+      # 管理画面のパスワード(ラボ用の見本の値。本番では必ず秘密の置き場所から渡します)。
+      BACKOFFICE_PASSWORD: admin
+    mem_limit: 192m
+
+  # ---------- worker(ASPECT=backgroundProcessing): 定期ジョブ。外には出しません ----------
+  worker:
+    <<: *aspect-common
+    environment:
+      <<: *db-env
+      ASPECT: backgroundProcessing
+      # 定期ジョブの間隔(秒)。「ジョブが止まった」アラートの演習では短くします。
+      CRON_INTERVAL_SECONDS: ${CRON_INTERVAL_SECONDS:-60}
+      # true でジョブをすべて失敗させます(CronJobStale アラートの演習)。
+      CHAOS_CRON_FAIL: ${CHAOS_CRON_FAIL:-false}
+    mem_limit: 192m
+
+  # ---------- storefront(Angular SSR。CCv2 の JS Storefront に当たる) ----------
+  storefront:
     build: ./apps/web
     image: lab/web:local
     environment:
       PORT: "4000"
-      # 演習では「RENDER_MODE=csr docker compose up -d web」のように、コマンドの前に書いて一時的に変えられます(書かなければ右の既定値)。
       RENDER_MODE: ${RENDER_MODE:-ssr} # ssr または csr
-      API_INTERNAL_URL: http://api:3001
       SSR_TIMEOUT_MS: ${SSR_TIMEOUT_MS:-3000}
       SSR_WINDOW_BUG: ${SSR_WINDOW_BUG:-false}
-      # Angular SSR は知らない Host ヘッダを 400 で断ります。edge から来る名前を許可しておきます。
-      NG_ALLOWED_HOSTS: localhost,127.0.0.1,web,edge
+      # SSR 中(サーバーの中)から api を呼ぶ住所。コンテナ同士の内側の近道です。
+      API_INTERNAL_URL: http://api:3001
+      # ブラウザが api を呼ぶ住所。画面とは別のオリジンなので CORS が効きます。
+      API_PUBLIC_URL: http://api.lab.localhost:18080
+      # Angular SSR は知らない Host ヘッダを 400 で断ります。ingress から来る名前と、中から直接呼ぶときの名前を許可します。
+      NG_ALLOWED_HOSTS: www.lab.localhost,storefront,localhost,127.0.0.1
     depends_on:
       api:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:4000/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
-      interval: 10s
-      timeout: 5s
-      start_period: 30s
-      retries: 5
     mem_limit: 384m
     restart: unless-stopped
 
-  # ---------- 入口(CDN と WAF の代わり) ----------
-  edge:
+  # ---------- ingress(クラスタの入口。CCv2 のエンドポイントと IP フィルタに当たる) ----------
+  ingress:
+    image: nginx:1.30.4-alpine
+    environment:
+      # 利用者の IP として X-Forwarded-For を信じる相手(cdn-waf の固定 IP。下の networks と合わせる)
+      CDN_WAF_IP: 172.30.89.10
+      # backoffice に入ってよい「社内」の範囲(空白かカンマ区切り)。
+      #   127.0.0.1/32     … ホスト PC(cdn-waf が「ホスト PC から来た」通信をこの番号で伝えます)
+      #   172.30.89.0/24   … ラボの Docker ネットワーク(Playwright・k6 のコンテナなど)
+      #   172.30.91.0/24   … 本格版(kind)のネットワーク lab-kind。軽量版では使いませんが、manifest.json の office と揃えています
+      # 社外の代わりのネットワーク outside(172.30.90.0/24)は入っていないので、そこから来ると 403 になります。
+      # ホスト PC も社外扱いにして 403 を見る演習: BACKOFFICE_IP_ALLOWLIST=172.30.89.0/24 docker compose up -d ingress
+      BACKOFFICE_IP_ALLOWLIST: ${BACKOFFICE_IP_ALLOWLIST:-127.0.0.1/32 172.30.89.0/24 172.30.91.0/24}
+    volumes:
+      - ./ingress/default.conf.template:/etc/nginx/templates/default.conf.template:ro
+      - ./ingress/40-ip-filter.sh:/docker-entrypoint.d/40-ip-filter.sh:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/ingress-healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    mem_limit: 64m
+    restart: unless-stopped
+
+  # ---------- cdn-waf(クラスタの外の CDN と WAF の役) ----------
+  cdn-waf:
     image: owasp/modsecurity-crs:4.25.1-nginx-alpine-202609241109-lts
     ports:
-      - "18080:8080"
+      # 127.0.0.1(と ::1)にだけ開けます。同じ LAN の別の PC からは届きません(攻撃の見本を外に向けないためにも大事)。
+      # コンテナの 8081 は「ホスト PC 用の入口」です(cdn-waf/default.conf.template の説明を参照)。
+      - "127.0.0.1:18080:8081"
+      - "[::1]:18080:8081"
     environment:
+      # 行き先(ingress)。振り分けは ingress の仕事なので、cdn-waf はホスト名を付けたまま全部 ingress に渡します。
+      INGRESS_UPSTREAM: ingress:8080
       # --- キャッシュ: on で有効、off で無効(ここ 1 か所で切り替え) ---
-      # 演習では「EDGE_CACHE=off docker compose up -d edge」のように一時的に変えられます(下の EDGE_GLOBAL_RATE・BLOCKING_PARANOIA・ANOMALY_INBOUND も同じ)。
       EDGE_CACHE: ${EDGE_CACHE:-on}
-      # --- 全体のレート制限(IP ごと) ---
+      # --- 全体のレート制限(IP ごと。3 つのホスト名の合計) ---
+      # 画面 1 枚で JS・CSS・画像・api をまとめて取りに来るので、少しの「まとめ買い」(burst)を認めます。
       EDGE_GLOBAL_RATE: ${EDGE_GLOBAL_RATE:-20r/s}
-      # --- CSP(このサイトが読み込んでよい物の一覧) ---
+      EDGE_GLOBAL_BURST: ${EDGE_GLOBAL_BURST:-80}
+      # --- www の CSP(この画面が読み込んでよい物の一覧) ---
       # script-src は「自分のサイトの JS ファイル」と、Angular が HTML に埋め込む小さなスクリプト 4 つ(sha256 の指紋で指定)だけを許します。
+      #   1 つ目 … イベントの受付係(ng-event-dispatch-contract)、2・3 つ目 … その起動(画面によって受けるイベントが違う)、
+      #   4 つ目 … CSS を後から有効にする onload="this.media='all'"(属性の中のスクリプトなので 'unsafe-hashes' が要ります)
       # 攻撃者が差し込んだ <script> は指紋が合わないので動きません(XSS の被害を小さくする最後の防壁)。
-      # Angular を更新して埋め込みスクリプトが変わると、ブラウザの開発者ツールに「Refused to execute inline script ...
-      # sha256-...」と出ます。そこに表示された指紋をここに足してください(docker compose up -d edge で反映)。
-      EDGE_CSP: "default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-VM2mZqyEQZoLzoTrp5EigFvzQ0+f1wSeBuoOn95WHCg=' 'sha256-8sGKvDKC8crv9OBcqEMvqrNDWlm1/80h7NJpJzqOnLI=' 'sha256-AjQQ1QCZ2iCwycbT8XbBx1OIdXf2xxLNb7TySQf3WR4=' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
+      # connect-src と img-src に api の住所があるのは、ブラウザが api(別オリジン)から JSON と商品画像を取るためです。
+      # 指紋の作り直し方は README.md の「CSP の指紋」にあります。
+      WWW_CSP: "default-src 'self'; script-src 'self' 'unsafe-hashes' 'sha256-VM2mZqyEQZoLzoTrp5EigFvzQ0+f1wSeBuoOn95WHCg=' 'sha256-8sGKvDKC8crv9OBcqEMvqrNDWlm1/80h7NJpJzqOnLI=' 'sha256-AjQQ1QCZ2iCwycbT8XbBx1OIdXf2xxLNb7TySQf3WR4=' 'sha256-MhtPZXr7+LpJUY5qtMutB+qWfQtMaPccfe7QXtCcEYc='; style-src 'self' 'unsafe-inline'; img-src 'self' data: http://api.lab.localhost:18080; font-src 'self' data:; connect-src 'self' http://api.lab.localhost:18080; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'"
       # --- WAF(ModSecurity + OWASP CRS) ---
       MODSEC_RULE_ENGINE: "On" # On = 遮断する / DetectionOnly = 記録だけ
       BLOCKING_PARANOIA: ${BLOCKING_PARANOIA:-1} # 疑い深さ 1〜4。上げるほど厳しく、誤遮断も増えます
@@ -117,29 +184,33 @@ services:
       ANOMALY_OUTBOUND: "4"
       MODSEC_AUDIT_LOG_FORMAT: JSON
       MODSEC_AUDIT_LOG: /dev/stdout
+      # 名前(ingress など)を調べる DNS。Docker の中の DNS は 127.0.0.11 です。
       RESOLVERS: 127.0.0.11
-      # CRS イメージ既定の backend 設定は使いません(振り分けは edge/default.conf.template に書いています)。
-      BACKEND: http://api:3001
+      # CRS イメージ既定の backend 設定は使いません(振り分けは cdn-waf/default.conf.template に書いています)。
+      BACKEND: http://ingress:8080
     volumes:
-      - ./edge/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
+      - ./cdn-waf/default.conf.template:/etc/nginx/templates/conf.d/default.conf.template:ro
       # 誤遮断を直すための例外ルール(CRS のプラグインの置き場所に入れると、本体ルールより先に読まれます)
-      - ./edge/modsecurity/lab-exclusions-before.conf:/opt/owasp-crs/plugins/lab-exclusions-before.conf:ro
-    # web がまだ無くても起動できるよう、待つのは api だけにしています。
+      - ./cdn-waf/modsecurity/lab-exclusions-before.conf:/opt/owasp-crs/plugins/lab-exclusions-before.conf:ro
     depends_on:
-      api:
+      ingress:
         condition: service_started
     healthcheck:
       # Host に IP アドレスを使うと WAF が「怪しい」と記録するので、名前(localhost)で呼びます。
-      test: ["CMD", "curl", "-fsS", "-H", "Host: localhost", "http://127.0.0.1:8080/edge-healthz"]
+      test: ["CMD", "curl", "-fsS", "-H", "Host: localhost", "http://127.0.0.1:18080/cdn-healthz"]
       interval: 10s
       timeout: 3s
       retries: 5
-    # edge は web・api へのリクエストのたびに新しい接続を作ります。キャッシュを切って 1 秒に数百回の負荷をかけると、
-    # 閉じた接続の後始末(TIME_WAIT)で「つなぎ口の番号」が足りなくなり 502 が出ました(演習 性能-2 で実際に起きたこと)。
-    # 使える番号を広げ、後始末中の番号を使い回せるようにしておきます。
+    # キャッシュを切って 1 秒に数百回の負荷をかけると、閉じた接続の後始末(TIME_WAIT)で「つなぎ口の番号」が足りなくなり
+    # 502 が出ました(演習 性能-2 で実際に起きたこと)。使える番号を広げ、後始末中の番号を使い回せるようにしておきます。
     sysctls:
       net.ipv4.ip_local_port_range: "1024 65535"
       net.ipv4.tcp_tw_reuse: "1"
+    networks:
+      default:
+        # ingress が「この IP から来た X-Forwarded-For だけ信じる」ために、番号を固定しています。
+        ipv4_address: 172.30.89.10
+      outside: {}
     mem_limit: 128m
     restart: unless-stopped
 
@@ -148,8 +219,15 @@ volumes:
 
 networks:
   default:
-    # edge の管理画面の IP 制限で使うため、番号の範囲を固定しています(edge/default.conf.template と合わせる)。
+    # ingress の IP フィルタで使うため、番号の範囲を固定しています(上の BACKOFFICE_IP_ALLOWLIST・CDN_WAF_IP と合わせる)。
     ipam:
       config:
         - subnet: 172.30.89.0/24
           gateway: 172.30.89.1
+  # 「社外(インターネット)」の代わりのネットワークです。cdn-waf だけがつながっています。
+  # ここに置いたコンテナから backoffice を開くと、IP フィルタで 403 になります(README.md の「IP フィルタを確かめる」)。
+  outside:
+    ipam:
+      config:
+        - subnet: 172.30.90.0/24
+          gateway: 172.30.90.1

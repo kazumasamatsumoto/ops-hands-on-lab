@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- 商品の索引(コア products)の動かし方の設定です。ラボ用に最小限にしています。 -->
+<config>
+  <luceneMatchVersion>9.10</luceneMatchVersion>
+  <dataDir>${solr.data.dir:}</dataDir>
+  <directoryFactory name="DirectoryFactory" class="${solr.directoryFactory:solr.NRTCachingDirectoryFactory}"/>
+  <!-- スキーマは schema.xml を読むだけ(API から書き換えない)。設定をファイルで管理するためです。 -->
+  <schemaFactory class="ClassicIndexSchemaFactory"/>
+
+  <updateHandler class="solr.DirectUpdateHandler2">
+    <updateLog><str name="dir">${solr.ulog.dir:}</str></updateLog>
+    <!-- 送った変更は、確定(commit)の指示が来なくても 15 秒で書き込みます。 -->
+    <autoCommit><maxTime>15000</maxTime><openSearcher>false</openSearcher></autoCommit>
+  </updateHandler>
+
+  <requestHandler name="/select" class="solr.SearchHandler">
+    <lst name="defaults">
+      <str name="echoParams">none</str>
+      <int name="rows">20</int>
+    </lst>
+  </requestHandler>
+</config>

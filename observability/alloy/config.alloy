@@ -12,7 +12,7 @@ discovery.docker "containers" {
 }
 
 // 2. Loki で探しやすいよう、ラベル(付箋)を付ける
-//    service   … compose のサービス名(api, web, edge, db など)
+//    service   … compose のサービス名(storefront・api・backoffice・worker・ingress・cdn-waf・db など)。Grafana では {service="api"} のように絞ります
 //    container … コンテナ名
 discovery.relabel "containers" {
   targets = discovery.docker.containers.targets
@@ -41,7 +41,7 @@ loki.source.docker "containers" {
   refresh_interval = "10s"
 }
 
-// 4. JSON のログ(api の pino、edge のアクセスログ)から「レベル」を取り出してラベルにする
+// 4. JSON のログ(api・backoffice・worker の pino、storefront のログ)から「レベル」を取り出してラベルにする(cdn-waf・ingress のアクセスログには level が無いので付きません)
 loki.process "json" {
   stage.json {
     expressions = { level = "level" }

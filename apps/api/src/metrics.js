@@ -1,21 +1,23 @@
 // Prometheus に渡す指標(メトリクス)を作るところです。
 // 指標 = 体温計や体重計のように、あとで数えたり比べたりするための数字です。
-import client from 'prom-client';
-import { chaos, leakedMb } from './chaos.js';
+'use strict';
 
-export const register = new client.Registry();
+const client = require('prom-client');
+const { chaos, leakedMb } = require('./chaos');
+
+const register = new client.Registry();
 
 // Node.js の標準的な指標(メモリ使用量、イベントループの遅れなど)も一緒に出します。
 client.collectDefaultMetrics({ register });
 
-export const httpRequestsTotal = new client.Counter({
+const httpRequestsTotal = new client.Counter({
   name: 'http_requests_total',
   help: 'HTTP リクエストの数(route・method・status ごと)',
   labelNames: ['route', 'method', 'status'],
   registers: [register],
 });
 
-export const httpRequestDuration = new client.Histogram({
+const httpRequestDuration = new client.Histogram({
   name: 'http_request_duration_seconds',
   help: 'HTTP リクエストの処理時間(秒)',
   labelNames: ['route', 'method', 'status'],
@@ -46,15 +48,27 @@ new client.Gauge({
   },
 });
 
+// 検索の実体(db / solr)ごとの件数と失敗。Solr が止まったときに「検索だけ」壊れているのが分かります。
+const searchRequestsTotal = new client.Counter({
+  name: 'search_requests_total',
+  help: '商品検索の回数(provider = db|solr、result = ok|error)',
+  labelNames: ['provider', 'result'],
+  registers: [register],
+});
+
 // リクエストが終わったときに数えるミドルウェアです。
-// route はパターン(例: /api/products/:id)を使います。実際の ID を入れると種類が増えすぎるためです。
-export function metricsMiddleware(req, res, next) {
+// route はパターン(例: /occ/v2/samplestore/products/:code)を使います。実際の商品コードを入れると種類が増えすぎるためです。
+function metricsMiddleware(req, res, next) {
   const end = httpRequestDuration.startTimer();
   res.on('finish', () => {
-    const route = req.route ? `${req.baseUrl}${req.route.path}` : 'unmatched';
+    // ルートに届く前に返した答え(例: OCC の入口のカオスの errorRate で返した 500)は req.route がありません。
+    // 'unmatched' にすると SLI の計算から外れてしまうので、ルーター(req.baseUrl)の下の「/*」として数えます。
+    const route = req.route ? `${req.baseUrl}${req.route.path}` : req.baseUrl ? `${req.baseUrl}/*` : 'unmatched';
     const labels = { route, method: req.method, status: String(res.statusCode) };
     httpRequestsTotal.inc(labels);
     end(labels);
   });
   next();
 }
+
+module.exports = { client, register, metricsMiddleware, searchRequestsTotal };

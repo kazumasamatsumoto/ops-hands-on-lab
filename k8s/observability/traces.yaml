@@ -1,0 +1,92 @@
+# ---------- OpenTelemetry Collector(トレースの集配所) ----------
+# アプリ(storefront・api・backoffice・worker)は http://otel-collector:4318 にトレースを送ります(manifest.json の tracing)。
+# ここで受け取り、まとめて Tempo へ渡します。設定は k8s/config/otel-collector.yaml。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: otel-collector
+  labels: { app.kubernetes.io/name: otel-collector }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: otel-collector }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: otel-collector }
+    spec:
+      containers:
+        - name: otel-collector
+          image: otel/opentelemetry-collector:0.161.0
+          args: ["--config=/etc/otelcol/config.yaml"]
+          ports:
+            - { name: otlp-http, containerPort: 4318 }
+            - { name: otlp-grpc, containerPort: 4317 }
+          readinessProbe:
+            tcpSocket: { port: otlp-http }
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 48Mi }
+            limits: { memory: 128Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/otelcol/config.yaml, subPath: otel-collector.yaml, readOnly: true }
+      volumes:
+        - { name: config, configMap: { name: otel-collector-config } }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: otel-collector
+  labels: { app.kubernetes.io/name: otel-collector }
+spec:
+  selector: { app.kubernetes.io/name: otel-collector }
+  ports:
+    - { name: otlp-http, port: 4318, targetPort: otlp-http }
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }
+---
+# ---------- Tempo(トレースの保管庫) ----------
+# Grafana は http://tempo:3200 に「この trace_id の道筋を見せて」「最近の道筋を探して」と問い合わせます。設定は k8s/config/tempo.yaml。
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tempo
+  labels: { app.kubernetes.io/name: tempo }
+spec:
+  replicas: 1
+  strategy: { type: Recreate }
+  selector:
+    matchLabels: { app.kubernetes.io/name: tempo }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: tempo }
+    spec:
+      containers:
+        - name: tempo
+          image: grafana/tempo:2.10.8
+          args: ["-config.file=/etc/tempo/tempo.yaml"]
+          ports:
+            - { name: web, containerPort: 3200 }
+            - { name: otlp-grpc, containerPort: 4317 }
+          readinessProbe:
+            httpGet: { path: /ready, port: web }
+            periodSeconds: 10
+            initialDelaySeconds: 10
+          resources:
+            requests: { cpu: 20m, memory: 128Mi }
+            limits: { memory: 384Mi }
+          volumeMounts:
+            - { name: config, mountPath: /etc/tempo, readOnly: true }
+            - { name: data, mountPath: /var/tempo }
+      volumes:
+        - { name: config, configMap: { name: tempo-config } }
+        - { name: data, emptyDir: {} }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tempo
+  labels: { app.kubernetes.io/name: tempo }
+spec:
+  selector: { app.kubernetes.io/name: tempo }
+  ports:
+    - { name: web, port: 3200, targetPort: web }
+    - { name: otlp-grpc, port: 4317, targetPort: otlp-grpc }

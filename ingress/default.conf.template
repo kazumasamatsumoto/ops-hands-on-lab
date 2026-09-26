@@ -1,0 +1,135 @@
+# ingress(クラスタの入口)の nginx 設定です。軽量版だけで使います。
+#
+# ■ 何の役か
+#   本格版(Kubernetes)では ingress-nginx というソフトが、Ingress リソース(k8s/generated/base/ingress.yaml)を読んで
+#   振り分けをします。軽量版には Kubernetes が無いので、同じ振り分けをこの nginx で手書きしています。
+#   CCv2 でいうと、Cloud Portal で設定する「エンドポイント」(ホスト名 → どの aspect に渡すか)と、
+#   エンドポイントごとの「IP フィルタ」(どこから来た人を通すか)に当たります。
+#
+#   cdn-waf(クラスタの外の CDN・WAF)との違い: cdn-waf は「外の盾」、ここは「お店の受付」です。
+#   ここではキャッシュも WAF もしません。やるのは次の 4 つだけです。
+#     1. ホスト名で行き先を決める   www → storefront、api → api、backoffice → backoffice
+#     2. IP フィルタ               backoffice は社内(BACKOFFICE_IP_ALLOWLIST)からだけ
+#     3. 中の人だけが使う口を閉じる  /admin/・/metrics・/readyz は外から 403
+#     4. ログインの回数制限         api の /authorizationserver/oauth/token は IP ごとに 1 秒 1 回(最初の 5 回はまとめて可)
+#
+# ■ このファイルは起動時に envsubst で ${...} の部分が環境変数に置き換わります(docker-compose.yml の ingress の environment)。
+
+# ---------- 本当の利用者の IP を知る ----------
+# ingress に直接つないでくるのは cdn-waf です($remote_addr は cdn-waf の IP になる)。
+# 本当の利用者の IP は、cdn-waf が X-Forwarded-For ヘッダに書いてくれます。
+# ただし、このヘッダは誰でも偽れるので、「cdn-waf(${CDN_WAF_IP})から来たときだけ」信じます。
+# こうすると、下の IP フィルタとログインの回数制限が、cdn-waf ではなく利用者の IP で効きます。
+set_real_ip_from ${CDN_WAF_IP};
+real_ip_header X-Forwarded-For;
+
+# ---------- ログ(1 行 1 JSON) ----------
+# remote_addr は上の仕組みで置き換わった「利用者の IP」、via は直接つないできた相手(cdn-waf)です。
+# request_id は cdn-waf が付けた X-Request-Id(cdn-waf のログの request_id と同じ値)。下でそのまま行き先へ渡します。
+log_format ingress_json escape=json
+  '{"time":"$time_iso8601","service":"ingress","host":"$host","remote_addr":"$remote_addr","request_id":"$http_x_request_id",'
+  '"via":"$realip_remote_addr","method":"$request_method","uri":"$request_uri","status":$status,'
+  '"request_time":$request_time,"upstream":"$upstream_addr","upstream_status":"$upstream_status"}';
+access_log /dev/stdout ingress_json;
+
+server_tokens off;
+
+# ---------- ログインの回数制限 ----------
+# IP ごとに 1 秒 1 回。総当たり(パスワードを片端から試す攻撃)を遅くします。
+# api はわざと「何度失敗してもロックしない」ので、ここが唯一の歯止めです。
+limit_req_zone $binary_remote_addr zone=login:10m rate=1r/s;
+limit_req_status 429;
+limit_req_log_level warn;
+
+# ---------- 行き先へ渡すヘッダ ----------
+proxy_http_version 1.1;
+proxy_set_header Host $host;
+proxy_set_header Connection "";
+proxy_set_header X-Forwarded-For $remote_addr;
+proxy_set_header X-Real-IP $remote_addr;
+proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+proxy_set_header X-Request-Id $http_x_request_id;
+proxy_connect_timeout 3s;
+proxy_read_timeout 30s;
+
+# 行き先の名前は「リクエストが来たとき」に Docker の DNS(127.0.0.11)で調べます。
+# 変数に入れておくと、行き先がまだ起動していなくても nginx は起動できます(その間は 502)。
+resolver 127.0.0.11 valid=10s ipv6=off;
+
+# ---------- 知らないホスト名 ----------
+server {
+  listen 8080 default_server;
+  server_name _;
+
+  location = /ingress-healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+  location / {
+    default_type text/plain;
+    return 404 "エンドポイントがありません(ホスト名: $host)\n";
+  }
+}
+
+# ======================================================================
+# エンドポイント www … storefront(誰でも)
+# ======================================================================
+server {
+  listen 8080;
+  server_name www.lab.localhost;
+  set $backend http://storefront:4000;
+
+  # 中の人(Prometheus)だけが使う口。外からは閉じます。
+  location = /metrics { deny all; }
+
+  location / {
+    proxy_pass $backend;
+  }
+}
+
+# ======================================================================
+# エンドポイント api … api aspect(誰でも。ただしログインは回数制限)
+# ======================================================================
+server {
+  listen 8080;
+  server_name api.lab.localhost;
+  set $backend http://api:3001;
+
+  # カオスの切り替え(/admin/)・指標(/metrics)・準備の確認(/readyz)は、外から閉じます。
+  # 使うときは、クラスタの中から直接呼びます(tools/chaos.sh は api コンテナの中から呼びます)。
+  location /admin/     { deny all; }
+  location = /metrics  { deny all; }
+  location = /readyz   { deny all; }
+
+  # ログイン(トークンの発行)。IP ごとに 1 秒 1 回、最初の 5 回はまとめて通します(burst=5)。超えたら 429。
+  location = /authorizationserver/oauth/token {
+    limit_req zone=login burst=5 nodelay;
+    proxy_pass $backend;
+  }
+
+  location / {
+    proxy_pass $backend;
+  }
+}
+
+# ======================================================================
+# エンドポイント backoffice … backoffice aspect(社内だけ = IP フィルタ)
+# ======================================================================
+server {
+  listen 8080;
+  server_name backoffice.lab.localhost;
+  set $backend http://backoffice:3001;
+
+  # IP フィルタ: 許す範囲(allow)を並べ、最後に「それ以外は拒否(deny all)」。
+  # 中身は起動時に 40-ip-filter.sh が環境変数 BACKOFFICE_IP_ALLOWLIST から作ります(作られた物: /etc/nginx/ip-filters/backoffice.conf)。
+  include /etc/nginx/ip-filters/backoffice.conf;
+
+  location /admin/     { deny all; }
+  location = /metrics  { deny all; }
+  location = /readyz   { deny all; }
+
+  location / {
+    proxy_pass $backend;
+  }
+}

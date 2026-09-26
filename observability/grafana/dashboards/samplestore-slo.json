@@ -7,18 +7,18 @@
   ],
   "timezone": "browser",
   "schemaVersion": 39,
-  "version": 1,
+  "version": 2,
   "editable": false,
   "refresh": "10s",
   "time": {
     "from": "now-30m",
     "to": "now"
   },
-  "description": "サンプルストアの SLO(1 か月の成功率 99.9%)と SSR の様子を見るダッシュボード",
+  "description": "サンプルストアの SLO(storefront と api。1 か月の成功率 99.9%)、SSR、定期ジョブ、ログを見るダッシュボード",
   "panels": [
     {
       "type": "row",
-      "title": "SLO の要約(目標: 1 か月の成功率 99.9%)",
+      "title": "SLO の要約(storefront と api。目標: 1 か月の成功率 99.9%)",
       "id": 1,
       "collapsed": false,
       "gridPos": {
@@ -51,7 +51,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:sli_success:ratio_rate5m{job=~\"api|web\"}",
+          "expr": "job:sli_success:ratio_rate5m{job=~\"storefront|api\"}",
           "instant": true,
           "legendFormat": "{{job}}"
         }
@@ -118,7 +118,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:http_request_duration_seconds:p95_rate5m{job=~\"api|web\"}",
+          "expr": "job:http_request_duration_seconds:p95_rate5m{job=~\"storefront|api\"}",
           "instant": true,
           "legendFormat": "{{job}}"
         }
@@ -184,7 +184,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_error_budget_remaining:ratio30d{job=~\"api|web\"}",
+          "expr": "job:slo_error_budget_remaining:ratio30d{job=~\"storefront|api\"}",
           "instant": true,
           "legendFormat": "{{job}}"
         }
@@ -251,7 +251,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_burn_rate:1h{job=~\"api|web\"}",
+          "expr": "job:slo_burn_rate:1h{job=~\"storefront|api\"}",
           "instant": true,
           "legendFormat": "{{job}}"
         }
@@ -298,7 +298,7 @@
     },
     {
       "type": "row",
-      "title": "API と web(SLI は両方を表示)",
+      "title": "storefront と api(リクエスト・成功率・p95・バーンレート)",
       "id": 6,
       "collapsed": false,
       "gridPos": {
@@ -311,8 +311,8 @@
     },
     {
       "type": "timeseries",
-      "title": "リクエスト数(1 秒あたり、ルート別)",
-      "description": "見守り用・管理用を除いた、利用者のリクエスト。",
+      "title": "リクエスト数(1 秒あたり、サービスとルート別)",
+      "description": "storefront は画面の種類(/、/p/:code など)、api は OCC のパス。JS・CSS(static)は除いています。",
       "id": 7,
       "datasource": {
         "type": "prometheus",
@@ -331,8 +331,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (route) (rate(http_requests_total{job=\"api\",route!~\"/metrics|/healthz|/readyz|/admin/.*|unmatched\"}[1m]))",
-          "legendFormat": "{{route}}"
+          "expr": "sum by (job, route) (rate(http_requests_total{job=~\"storefront|api\",route!~\"/metrics|/healthz|/readyz|/admin/.*|unmatched|static\"}[1m]))",
+          "legendFormat": "{{job}} {{route}}"
         }
       ],
       "fieldConfig": {
@@ -358,7 +358,7 @@
     },
     {
       "type": "timeseries",
-      "title": "ステータス別(1 秒あたり)",
+      "title": "ステータス別(1 秒あたり、サービス別)",
       "description": "2xx・4xx・5xx の内訳。",
       "id": 8,
       "datasource": {
@@ -378,8 +378,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "sum by (status) (rate(http_requests_total{job=\"api\",route!~\"/metrics|/healthz|/readyz|/admin/.*|unmatched\"}[1m]))",
-          "legendFormat": "{{status}}"
+          "expr": "sum by (job, status) (rate(http_requests_total{job=~\"storefront|api\",route!~\"/metrics|/healthz|/readyz|/admin/.*|unmatched\"}[1m]))",
+          "legendFormat": "{{job}} {{status}}"
         }
       ],
       "fieldConfig": {
@@ -425,7 +425,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:sli_success:ratio_rate5m{job=~\"api|web\"}",
+          "expr": "job:sli_success:ratio_rate5m{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 成功率(5 分窓)"
         }
       ],
@@ -489,7 +489,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:http_request_duration_seconds:p95_rate5m{job=~\"api|web\"}",
+          "expr": "job:http_request_duration_seconds:p95_rate5m{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} p95"
         }
       ],
@@ -536,7 +536,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_burn_rate:5m{job=~\"api|web\"}",
+          "expr": "job:slo_burn_rate:5m{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 5 分"
         },
         {
@@ -545,7 +545,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_burn_rate:30m{job=~\"api|web\"}",
+          "expr": "job:slo_burn_rate:30m{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 30 分"
         },
         {
@@ -554,7 +554,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_burn_rate:1h{job=~\"api|web\"}",
+          "expr": "job:slo_burn_rate:1h{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 1 時間"
         },
         {
@@ -563,7 +563,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_burn_rate:6h{job=~\"api|web\"}",
+          "expr": "job:slo_burn_rate:6h{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 6 時間"
         }
       ],
@@ -631,7 +631,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:slo_error_budget_remaining:ratio30d{job=~\"api|web\"}",
+          "expr": "job:slo_error_budget_remaining:ratio30d{job=~\"storefront|api\"}",
           "legendFormat": "{{job}} 残り"
         }
       ],
@@ -659,8 +659,8 @@
     },
     {
       "type": "timeseries",
-      "title": "API のメモリ(RSS)",
-      "description": "leakMb スイッチを入れると右肩上がり → 上限(256MB)で落ちます。",
+      "title": "メモリ(RSS。api・backoffice・worker・storefront)",
+      "description": "api の leakMb スイッチを入れると api が右肩上がり → 上限(256MB)で落ちます。",
       "id": 13,
       "datasource": {
         "type": "prometheus",
@@ -679,8 +679,8 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "process_resident_memory_bytes{job=\"api\"}",
-          "legendFormat": "RSS"
+          "expr": "process_resident_memory_bytes{job=~\"storefront|api|backoffice|worker\"}",
+          "legendFormat": "{{job}}"
         }
       ],
       "fieldConfig": {
@@ -706,7 +706,7 @@
     },
     {
       "type": "timeseries",
-      "title": "カオススイッチの状態",
+      "title": "カオススイッチの状態(api と worker)",
       "description": "今わざと壊しているものが一目で分かります(真偽値は 1/0)。",
       "id": 14,
       "datasource": {
@@ -726,7 +726,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "lab_chaos_setting{job=\"api\"}",
+          "expr": "max by (name) (lab_chaos_setting{job=~\"api|worker\"})",
           "legendFormat": "{{name}}"
         }
       ],
@@ -753,7 +753,7 @@
     },
     {
       "type": "row",
-      "title": "web(SSR)",
+      "title": "storefront(SSR)",
       "id": 15,
       "collapsed": false,
       "gridPos": {
@@ -786,7 +786,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "histogram_quantile(0.5, sum by (le) (rate(ssr_render_duration_seconds_bucket{job=\"web\"}[5m])))",
+          "expr": "histogram_quantile(0.5, sum by (le) (rate(ssr_render_duration_seconds_bucket{job=\"storefront\"}[5m])))",
           "legendFormat": "p50"
         },
         {
@@ -795,7 +795,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:ssr_render_duration_seconds:p95_rate5m{job=\"web\"}",
+          "expr": "job:ssr_render_duration_seconds:p95_rate5m{job=\"storefront\"}",
           "legendFormat": "p95"
         }
       ],
@@ -842,7 +842,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:ssr_fallback:ratio_rate5m{job=\"web\"}",
+          "expr": "job:ssr_fallback:ratio_rate5m{job=\"storefront\"}",
           "legendFormat": "フォールバック率"
         }
       ],
@@ -906,7 +906,7 @@
             "type": "prometheus",
             "uid": "prometheus"
           },
-          "expr": "job:ssr_errors:rate5m{job=\"web\"}",
+          "expr": "job:ssr_errors:rate5m{job=\"storefront\"}",
           "legendFormat": "エラー"
         }
       ],
@@ -933,8 +933,8 @@
     },
     {
       "type": "row",
-      "title": "ログ(Loki)",
-      "id": 19,
+      "title": "worker(定期ジョブ = backgroundProcessing)",
+      "id": 21,
       "collapsed": false,
       "gridPos": {
         "x": 0,
@@ -945,9 +945,179 @@
       "panels": []
     },
     {
+      "type": "timeseries",
+      "title": "ジョブの実行(1 分あたり、成功・失敗別)",
+      "description": "cronjob_runs_total。CHAOS_CRON_FAIL=true にすると failure だけになります。",
+      "id": 22,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 0,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "sum by (job, result) (increase(cronjob_runs_total[1m]))",
+          "legendFormat": "{{job}} {{result}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "最後の成功からの時間",
+      "description": "5 分(300 秒)を超えると CronJobStale が鳴ります(赤い線)。",
+      "id": 23,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 8,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "job:cronjob_seconds_since_last_success",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": {
+              "mode": "line"
+            }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 300
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "timeseries",
+      "title": "ジョブ 1 回の時間(p95)",
+      "description": "cronjob_duration_seconds。Solr の索引の作り直し(本格版)は長めです。",
+      "id": 24,
+      "datasource": {
+        "type": "prometheus",
+        "uid": "prometheus"
+      },
+      "gridPos": {
+        "x": 16,
+        "y": 41,
+        "w": 8,
+        "h": 8
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "prometheus"
+          },
+          "expr": "histogram_quantile(0.95, sum by (job, le) (rate(cronjob_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{job}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom"
+        },
+        "tooltip": {
+          "mode": "multi"
+        }
+      }
+    },
+    {
+      "type": "row",
+      "title": "ログ(Loki)",
+      "id": 19,
+      "collapsed": false,
+      "gridPos": {
+        "x": 0,
+        "y": 49,
+        "w": 24,
+        "h": 1
+      },
+      "panels": []
+    },
+    {
       "type": "logs",
-      "title": "ログ(api・web・edge)",
-      "description": "Grafana の Explore で {service=\"api\"} |= \"chaos\" のように絞り込めます。",
+      "title": "ログ(storefront・api・backoffice・worker・ingress・cdn-waf)",
+      "description": "Grafana の Explore で {service=\"api\"} |= \"chaos\" や {service=\"cdn-waf\"} |= \"ruleId\" のように絞り込めます。",
       "id": 20,
       "datasource": {
         "type": "loki",
@@ -955,7 +1125,7 @@
       },
       "gridPos": {
         "x": 0,
-        "y": 41,
+        "y": 50,
         "w": 24,
         "h": 12
       },
@@ -966,7 +1136,7 @@
             "type": "loki",
             "uid": "loki"
           },
-          "expr": "{project=\"lab\", service=~\"api|web|edge\"}"
+          "expr": "{project=\"lab\", service=~\"storefront|api|backoffice|worker|ingress|cdn-waf\"}"
         }
       ],
       "options": {

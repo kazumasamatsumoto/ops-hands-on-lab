@@ -1,0 +1,17 @@
+# 土台(アプリの Deployment 以外で、アプリが使う物)の目次です。k8s/up.sh が kubectl apply -k k8s/platform で反映します。
+#
+#   namespace.yaml  lab の部屋(Namespace)
+#   secret.yaml     秘密の値(DB と管理画面のパスワード。ラボ専用の見本の値)
+#   db.yaml         PostgreSQL(StatefulSet)
+#   search.yaml     Solr(検索の索引)。設定(configset)は k8s/up.sh が apps/api/solr/products/conf から ConfigMap にします
+#
+# アプリ(storefront・api・backoffice・worker)と Ingress は、manifest.json から作る k8s/generated/ にあります。
+# CCv2 でいうと、ここは「SAP が用意してくれる土台」(DB・検索)、k8s/generated/ は「manifest に書いて作ってもらう物」です。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+resources:
+  - namespace.yaml
+  - secret.yaml
+  - db.yaml
+  - search.yaml

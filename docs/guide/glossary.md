@@ -1,9 +1,9 @@
 # 用語集
 
 ::: tip 3 行まとめ
-- 演習と設計書に出てくる言葉を、分野ごとに集めました(全 113 語)。
+- 演習と設計書に出てくる言葉を、分野ごとに集めました(全 146 語)。第 2 版で、CCv2 + ヘッドレスの形に合わせた言葉(エンドポイント、aspect、OCC、OAuth、トレースなど)を足しました。
 - どの言葉も「一言でいうと」「たとえ」「ラボで見られる場所」の 3 つで説明しています。
-- 言葉ごとに英数字の目印(アンカー)を付けています。例: `/guide/glossary#burn-rate`(バーンレート)、`#ssr`、`#error-budget`。演習ページや設計書から、ここに飛んでこられます。
+- 言葉ごとに英数字の目印(アンカー)を付けています。例: `/guide/glossary#burn-rate`(バーンレート)、`#ssr`、`#endpoint`、`#aspect`。演習ページや設計書から、ここに飛んでこられます。
 :::
 
 言葉の並びは「土台 → 画面 → API → 入口 → 見張り → 試験 → 性能 → 障害 → 復旧 → 守り」の順です。ページ内の検索(Ctrl + F / ⌘ + F)も使ってください。
@@ -13,17 +13,17 @@
 ### コンテナ {#container}
 - **一言でいうと**: アプリと、それが動くのに必要な物をまとめて箱に入れ、どこでも同じように動かす仕組み。
 - **たとえ**: 引っ越し用の段ボール。中身ごと運べば、新しい家でもすぐ使える。
-- **ラボで見られる場所**: `docker compose ps` で並ぶ db・api・web・edge など。
+- **ラボで見られる場所**: `docker compose ps` で並ぶ db・api・backoffice・worker・storefront・ingress・cdn-waf など。
 
 ### イメージ {#image}
 - **一言でいうと**: コンテナの「元の型」。ここから何個でも同じコンテナを作れる。
 - **たとえ**: たい焼きの型。
-- **ラボで見られる場所**: [api の Dockerfile](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/Dockerfile) から作る `lab/api:local`。
+- **ラボで見られる場所**: [api の Dockerfile](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/Dockerfile) から作る `lab/api:local`(api・backoffice・worker の 3 役がこの 1 つのイメージを使う)と、storefront の `lab/web:local`。
 
 ### マルチステージビルド {#multi-stage-build}
 - **一言でいうと**: イメージを 2 段階で作り、2 段目には動かすのに必要な物だけを入れる作り方。
 - **たとえ**: 台所で料理して、お皿に盛った料理だけを食卓に出す。
-- **ラボで見られる場所**: api と web の Dockerfile。
+- **ラボで見られる場所**: api(apps/api)と storefront(apps/web)の Dockerfile。
 
 ### docker compose {#docker-compose}
 - **一言でいうと**: 複数のコンテナの起動をまとめて 1 つのファイルに書き、1 コマンドで動かす道具。
@@ -53,27 +53,27 @@
 ### マニフェスト {#manifest}
 - **一言でいうと**: Kubernetes に「こういう状態にして」と伝える設定ファイル(YAML)。
 - **たとえ**: 店長に渡す「今日の配置表」。
-- **ラボで見られる場所**: 本格版の k8s/ フォルダ。
+- **ラボで見られる場所**: 本格版の [k8s/generated/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/generated)(Deployment・Service・Ingress。[manifest.json](#manifest-json) から作る)。
 
 ### IaC {#iac}
 - **一言でいうと**: Infrastructure as Code。環境の作り方を手順書ではなく、そのまま実行できるファイルで持つこと。
 - **たとえ**: 口伝えのレシピを、分量まで書いたレシピカードにする。
-- **ラボで見られる場所**: docker-compose.yml、k8s/ のマニフェスト。
+- **ラボで見られる場所**: docker-compose.yml、manifest.json、k8s/generated/ のマニフェスト。
 
 ### 環境変数 {#env-var}
 - **一言でいうと**: アプリの外から渡す設定値。コードを変えずに動きを変えられる。
 - **たとえ**: 同じ炊飯器で、水の量のつまみだけ変える。
-- **ラボで見られる場所**: `RENDER_MODE`、`SSR_TIMEOUT_MS`、`EDGE_CACHE` など。
+- **ラボで見られる場所**: `ASPECT`、`RENDER_MODE`、`SSR_TIMEOUT_MS`、`EDGE_CACHE`、`CORS_ALLOWED_ORIGINS`、`BACKOFFICE_IP_ALLOWLIST` など。
 
 ### ConfigMap {#configmap}
 - **一言でいうと**: Kubernetes で、秘密でない設定値をまとめて置く場所。
 - **たとえ**: 掲示板に貼った連絡事項。
-- **ラボで見られる場所**: 本格版。[設定値とシークレット](/exercises/06-infra-config-and-secrets)。
+- **ラボで見られる場所**: 本格版の `lab-environment`(環境ごとの `LAB_ENV`・`EDGE_CACHE`・`SEARCH_PROVIDER`)。[設定値とシークレット](/exercises/06-infra-config-and-secrets)。
 
 ### Secret(シークレット) {#secret}
 - **一言でいうと**: パスワードや署名鍵など、秘密の設定値を置く場所。
 - **たとえ**: 鍵のかかる引き出し。
-- **ラボで見られる場所**: 軽量版では `JWT_SECRET`(見本の値)。本格版では Secret。
+- **ラボで見られる場所**: 軽量版では docker-compose.yml の `PGPASSWORD`・`BACKOFFICE_PASSWORD`(見本の値)。本格版では Secret `lab-secrets`(manifest.json には名前と鍵の名前だけを書く)。
 
 ### ヘルスチェック {#health-check}
 - **一言でいうと**: 「元気か?」を機械が定期的に聞く仕組み。
@@ -103,7 +103,7 @@
 ### 穏やかな停止(グレースフルシャットダウン) {#graceful-shutdown}
 - **一言でいうと**: 止める合図を受けたら、新しい客は断り、受付中の処理を終えてから止まること。
 - **たとえ**: 閉店時刻に、店内のお客さんの会計を済ませてからシャッターを下ろす。
-- **ラボで見られる場所**: api の [server.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/server.js) の `SIGTERM` の処理(最大 10 秒待つ)。
+- **ラボで見られる場所**: api・backoffice・worker に共通の [http-common.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/http-common.js) の `SIGTERM` の処理(最大 10 秒待つ)。
 
 ### メモリ上限 {#memory-limit}
 - **一言でいうと**: 1 つのコンテナが使ってよいメモリの上限。超えると強制終了される。
@@ -125,12 +125,47 @@
 - **たとえ**: 行列が伸びたら、自動でレジを開ける。
 - **ラボで見られる場所**: 本格版(任意)。[台数を増やして耐える](/exercises/13-perf-scale-out)。
 
+### aspect {#aspect}
+- **一言でいうと**: 同じアプリ(同じイメージ)を、役割ごとに分けて動かすときの「役」の名前。api・backoffice・backgroundProcessing の 3 つ。
+- **たとえ**: 同じ店員(イメージ)に、レジ係・事務係・倉庫係の名札(役)を付けて配置する。
+- **ラボで見られる場所**: 環境変数 `ASPECT=api|backoffice|backgroundProcessing`([main.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/main.js))。CCv2 の aspect に当たる。
+
+### backgroundProcessing {#background-processing}
+- **一言でいうと**: 画面も API も持たず、裏で定期ジョブだけを動かす aspect。
+- **たとえ**: お店の奥の倉庫係。お客さんには会わないが、在庫の数を毎日合わせている。
+- **ラボで見られる場所**: worker(`ASPECT=backgroundProcessing`)。外に出すのは `/healthz`・`/metrics` だけ。
+
+### CronJob(定期ジョブ) {#cronjob}
+- **一言でいうと**: 決まった間隔・時刻に自動で動く仕事。
+- **たとえ**: 毎朝 9 時に届く新聞。止まっても、しばらく誰も気づかない。
+- **ラボで見られる場所**: worker の `stockImportJob`・`searchIndexJob`(`CRON_INTERVAL_SECONDS`、既定 60 秒)。止まりはアラート `CronJobStale` で見張る。
+
+### manifest(manifest.json) {#manifest-json}
+- **一言でいうと**: アプリ・aspect・台数・環境変数・エンドポイント・IP フィルタ・環境の違いを 1 か所にまとめた「構成の設計図」。
+- **たとえ**: 家の間取り図。これを大工さん(ビルドとデプロイ)に渡すと、家(Kubernetes のリソース)が建つ。
+- **ラボで見られる場所**: [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json)(このラボ独自の簡単な形)と、そこから k8s/generated/ を作る [render.mjs](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/manifest/render.mjs)。CCv2 の manifest.json の考え方をまねている。
+
+### d1・s1・p1(環境) {#environments}
+- **一言でいうと**: 開発(d1)・ステージング(s1)・本番(p1)の 3 つの環境の名前。同じイメージを、台数や IP フィルタなどの設定だけ変えて動かす。
+- **たとえ**: 同じ料理を、試食用(d1)・リハーサル(s1)・本番の宴会(p1)で出す。レシピは同じで、量と客だけが違う。
+- **ラボで見られる場所**: [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) の `environments`。d1・s1 は www・api も社内だけ、p1 はお店を誰でも。本格版は `LAB_ENV=d1|s1|p1 k8s/up.sh`(既定 p1。切り替えるだけなら `LAB_SKIP_BUILD=1` も付ける)。
+
+### kustomize {#kustomize}
+- **一言でいうと**: 共通の YAML(base)に、環境ごとの差分だけを重ねて、最終的な YAML を組み立てる道具。kubectl に入っている。
+- **たとえ**: 基本の制服に、店舗ごとの名札とワッペンだけを付け足す。
+- **ラボで見られる場所**: `kubectl kustomize k8s/generated/envs/p1`(クラスタが無くても、組み立てた結果が見られる)。
+
+### オーバーレイ {#overlay}
+- **一言でいうと**: kustomize で、base の上に重ねる「環境ごとの差分」の置き場所。
+- **たとえ**: 透明なシートに差分だけ書いて、元の図面に重ねる。
+- **ラボで見られる場所**: [k8s/generated/envs/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/generated/envs) の d1・s1・p1(台数・ConfigMap `lab-environment`・環境変数と IP フィルタのパッチ)。
+
 ## 2. 画面(FE)
 
 ### SSR {#ssr}
 - **一言でいうと**: サーバー側で画面の HTML を作って返すこと(Server-Side Rendering)。
 - **たとえ**: 料理を厨房で盛り付けてから出す。お客さんはすぐ食べられる。
-- **ラボで見られる場所**: web(`RENDER_MODE=ssr`)。[SSR と CSR](/exercises/01-fe-ssr-vs-csr)。
+- **ラボで見られる場所**: storefront(`RENDER_MODE=ssr`)。[SSR と CSR](/exercises/01-fe-ssr-vs-csr)。
 
 ### CSR {#csr}
 - **一言でいうと**: 空の HTML を返し、ブラウザの JS が画面を作ること(Client-Side Rendering)。
@@ -140,17 +175,17 @@
 ### SPA {#spa}
 - **一言でいうと**: 最初に 1 回ページを読み込み、あとの画面の切り替えはブラウザの JS で行うアプリ。
 - **たとえ**: 1 冊のノートのページをめくるだけで、別の本を取りに行かない。
-- **ラボで見られる場所**: web(Angular)。
+- **ラボで見られる場所**: storefront(Angular)。
 
 ### ハイドレーション {#hydration}
 - **一言でいうと**: サーバーが作った HTML をそのまま使い、ブラウザは「動き」だけを付け足すこと。
 - **たとえ**: 盛り付け済みの料理に、席でソースだけかける。
-- **ラボで見られる場所**: web の [app.config.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/app.config.ts)。
+- **ラボで見られる場所**: storefront の [app.config.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/app.config.ts)。
 
 ### TransferState {#transferstate}
 - **一言でいうと**: サーバーで取った API の結果を HTML に添えて渡し、ブラウザが同じ API をもう一度呼ばずに済むようにする仕組み。
 - **たとえ**: 前の担当者からの申し送りメモ。
-- **ラボで見られる場所**: web の api.service.ts(商品は申し送る、注文は申し送らない)。
+- **ラボで見られる場所**: storefront の api.service.ts(CMS と商品は申し送る、注文は申し送らない)。
 
 ### フォールバック {#fallback}
 - **一言でいうと**: 本来のやり方が間に合わないとき、代わりのやり方に逃げること。
@@ -160,7 +195,7 @@
 ### 遅延読み込み {#lazy-loading}
 - **一言でいうと**: 画面を開いたときに、その画面の部品だけを後から読み込むこと。
 - **たとえ**: 使うときに倉庫から取ってくる。最初は店頭に置かない。
-- **ラボで見られる場所**: 注文履歴 `/me/orders`([app.routes.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/app.routes.ts))。
+- **ラボで見られる場所**: 注文履歴 `/my-account/orders`([app.routes.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/app.routes.ts))。
 
 ### チャンク {#chunk}
 - **一言でいうと**: ビルドで分けられた JS のファイルの 1 切れ。
@@ -177,27 +212,52 @@
 - **たとえ**: 図書館の目録に、本の内容を正しく載せてもらう。
 - **ラボで見られる場所**: SSR と CSR の HTML の違い(`curl` で見る)。
 
+### ヘッドレス {#headless}
+- **一言でいうと**: 画面(storefront)と、商品や注文を扱う仕組み(api)を分け、API だけでつなぐ作り方。画面の側は自由に作り直せる。
+- **たとえ**: 頭(画面)と体(お店の仕組み)を別々に作り、首(API)でつなぐ。頭だけ取り替えられる。
+- **ラボで見られる場所**: storefront(Angular)と api(`/occ/v2/...`)。CCv2 で Composable Storefront を使う形に当たる。
+
+### CMS 駆動の描画 {#cms-driven-rendering}
+- **一言でいうと**: 「どの画面に、どの部品を、どの順で置くか」を CMS のデータ(JSON)で決め、storefront はそれを見て部品を並べるだけにする作り方。ヘッドレスの核心。
+- **たとえ**: 料理人(storefront)は、毎日届く献立表(CMS の JSON)どおりに皿を並べる。献立を変えるのに料理人の教育(ビルド)は要らない。
+- **ラボで見られる場所**: `GET /occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage` と [cms-page.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-page.ts)。[CMS の JSON が画面になるまで](/exercises/21-headless-cms)。
+
+### スロット {#slot}
+- **一言でいうと**: CMS のページの中の「部品の置き場所」。1 つのスロットに 0 個以上の部品が入る。
+- **たとえ**: お弁当箱の仕切り。どの仕切りに何を詰めるかは献立で決まる。
+- **ラボで見られる場所**: `contentSlots.contentSlot[]` の `position`(`Section1`〜`Section4`・`Summary`・`CrossSelling` など)。HTML では `<div class="cms-slot" data-slot="Section1">`。
+
+### typeCode {#typecode}
+- **一言でいうと**: CMS の部品の「種類」を表す名前。storefront はこれを見て、どの画面部品で描くかを決める。
+- **たとえ**: 料理の札(「焼き魚」「サラダ」)。札を見て、どの皿に盛るかを決める。
+- **ラボで見られる場所**: `SimpleBannerComponent`・`ProductCarouselComponent` など。対応表は [cms-mapping.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-mapping.ts) の 1 か所だけ。知らない typeCode は描かずにログ `cms_unknown_component` を出す。
+
+### JS Storefront {#js-storefront}
+- **一言でいうと**: ブラウザで動く JavaScript の画面を、サーバーでも描画(SSR)して配るお店の画面の部品。
+- **たとえ**: お店のショーウィンドウ。飾り付け(HTML)を先に済ませてから見せる。
+- **ラボで見られる場所**: storefront(`apps/web`、ポート 4000)。CCv2 の JS Storefront に当たる。
+
 ## 3. API(BE)
 
 ### API {#api}
 - **一言でいうと**: 画面などの別のプログラムが、データを取ったり頼んだりするための窓口。
 - **たとえ**: 役所の窓口。決まった書類を出すと、決まった答えが返る。
-- **ラボで見られる場所**: `/api/products`、`/api/login`、`/api/orders/:orderId` など。
+- **ラボで見られる場所**: `/occ/v2/samplestore/products/search`、`/occ/v2/samplestore/cms/pages`、`/occ/v2/samplestore/users/current/orders` など([OCC](#occ))。
 
 ### 認証 {#authentication}
 - **一言でいうと**: 「あなたは誰か」を確かめること。
 - **たとえ**: 入口で社員証を見せる。
-- **ラボで見られる場所**: `POST /api/login`。
+- **ラボで見られる場所**: `POST /authorizationserver/oauth/token`([OAuth](#oauth) のパスワードグラント)。
 
 ### 認可 {#authorization}
 - **一言でいうと**: 「あなたはそれをしてよいか」を確かめること。
 - **たとえ**: 社員証があっても、他の部署の金庫は開けられない。
-- **ラボで見られる場所**: 注文詳細で持ち主を確かめる処理。
+- **ラボで見られる場所**: 注文 1 件 `GET /occ/v2/samplestore/users/current/orders/{code}` で持ち主を確かめる処理(持ち主でなければ 404)。
 
 ### JWT {#jwt}
 - **一言でいうと**: ログインした証拠を、改ざんできない形で書いた文字列。
 - **たとえ**: 割り印つきの入館証。有効期限が書いてある。
-- **ラボで見られる場所**: ログインで返る `token`(有効 15 分)。
+- **ラボで見られる場所**: 第 2 版のラボでは使っていません。ラボのトークンは中身の無いランダムな文字列です([アクセストークン](#access-token))。JWT は中身を読めるので、取り消しにくい・大きい、という違いがあります。
 
 ### IDOR {#idor}
 - **一言でいうと**: 番号を変えるだけで他人のデータが見えてしまう、認可の抜け。
@@ -212,7 +272,7 @@
 ### プレースホルダ {#placeholder}
 - **一言でいうと**: SQL の中に値の「置き場所」だけ書き、値は別に渡すこと。値が命令として読まれない。
 - **たとえ**: 決まった枠にしか書けない注文票。枠の外には何も書けない。
-- **ラボで見られる場所**: api の検索(`ILIKE $1`)。
+- **ラボで見られる場所**: api の検索([occ/search.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/search.js) の `ILIKE $1`)。
 
 ### パスワードのハッシュ {#password-hash}
 - **一言でいうと**: パスワードをそのまま保存せず、元に戻せない形に変えて保存すること。
@@ -224,52 +284,127 @@
 - **たとえ**: 貸し出し用の傘立て。本数に限りがある。
 - **ラボで見られる場所**: api の db.js(最大 10 本、接続待ちは 3 秒まで)。
 
+### OCC {#occ}
+- **一言でいうと**: お店の商品・カート・注文などを扱う REST API の形。URL が `/occ/v2/<サイト ID>/...` で始まる。
+- **たとえ**: 決まった書式の注文用紙。書式が決まっているので、どの画面からでも同じように頼める。
+- **ラボで見られる場所**: api の `/occ/v2/samplestore/products/search`・`/products/{code}`・`/cms/pages`・`/users/current/orders`。CCv2 の OCC の REST API に当たる(ラボは「OCC 風」の簡単な物)。
+
+### baseSiteId {#base-site-id}
+- **一言でいうと**: URL に入れる「どのお店(サイト)か」の ID。1 つの API で複数のお店を持てるようにするため。
+- **たとえ**: 同じ本社に届く郵便の宛名に書く「〇〇支店」。
+- **ラボで見られる場所**: `samplestore`(`/occ/v2/samplestore/...`)。
+
+### fields {#fields}
+- **一言でいうと**: API に「どれくらいの項目を返してほしいか」を伝えるパラメータ。
+- **たとえ**: 定食の「ご飯少なめ・普通・大盛り」。
+- **ラボで見られる場所**: `fields=BASIC`・`DEFAULT`(既定)・`FULL`。検索 20 件で BASIC は約 3KB、FULL は約 25KB。
+
+### OAuth {#oauth}
+- **一言でいうと**: 「どのアプリが、誰の代わりに、何をしてよいか」を、パスワードの代わりにトークンで伝える決まり。
+- **たとえ**: 遊園地の入口で身分を見せて、腕に巻くリストバンドをもらう。中のアトラクションはバンドだけ見る。
+- **ラボで見られる場所**: `POST /authorizationserver/oauth/token`([oauth.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/oauth.js))。CCv2 の OAuth の認可サーバーに当たる。
+
+### パスワードグラント {#password-grant}
+- **一言でいうと**: 利用者の名前とパスワードを送って、アクセストークンをもらう OAuth のもらい方。
+- **たとえ**: 受付で名前と合言葉を言うと、その場でリストバンドがもらえる。
+- **ラボで見られる場所**: `grant_type=password&client_id=storefront&username=alice&password=password`。
+
+### 公開クライアント {#public-client}
+- **一言でいうと**: 秘密の鍵(client_secret)を持たない OAuth のクライアント。ブラウザで動くアプリは中身を誰でも見られるので、秘密を持てない。
+- **たとえ**: 誰でも読める掲示板に貼った申込書。合言葉は書けない。
+- **ラボで見られる場所**: `client_id=storefront`(ほかのクライアントは 401 `invalid_client`)。
+
+### アクセストークン {#access-token}
+- **一言でいうと**: API を呼ぶときに見せる「入ってよい」の印。期限がある。`Authorization: Bearer <トークン>` の形で付ける。
+- **たとえ**: リストバンド。期限が来たら使えない。
+- **ラボで見られる場所**: 有効 900 秒(15 分)。中身の無いランダムな文字列で、DB には SHA-256 の値と期限だけを置く。storefront はメモリと sessionStorage に持つ。
+
+### Solr {#solr}
+- **一言でいうと**: 商品検索のための専用の検索ソフト。あらかじめ作った索引を引くので、DB で探すより速く、日本語の言葉の切り方も工夫できる。
+- **たとえ**: 図書館の索引カード。本棚を全部見て回らなくても、カードで場所が分かる。
+- **ラボで見られる場所**: 本格版の search(`SEARCH_PROVIDER=solr`、コア `products`、設定は [apps/api/solr/products/conf/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/apps/api/solr/products/conf)。Deployment・Service `search:8983`、イメージ `solr:9.10.1-slim`)。軽量版は DB の検索で代用。
+
+### 索引(インデックス) {#search-index}
+- **一言でいうと**: 検索しやすい形に並べ直した、データの写し。元のデータ(DB)が変わったら作り直す必要がある。
+- **たとえ**: 本の巻末の索引。本文を直したら、索引も直さないとずれる。
+- **ラボで見られる場所**: worker の `searchIndexJob` が 60 秒ごとに DB の全商品で作り直す。だから価格を変えても、検索結果に出るまで最大 60 秒遅れる。
+
+### CJK バイグラム {#cjk-bigram}
+- **一言でいうと**: 日本語・中国語・韓国語の文を、2 文字ずつ重ねて切って索引にするやり方。単語の区切りが無い言葉でも探せる。
+- **たとえ**: 「ノートパソコン」を「ノー・ート・トパ・パソ・ソコ・コン」の札に分けて並べる。
+- **ラボで見られる場所**: Solr の [schema.xml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/solr/products/conf/schema.xml) の `text_cjk`(全角・半角の違いも吸収する)。
+
 ## 4. 入口(ネットワーク)
 
 ### オリジン {#origin}
 - **一言でいうと**: 「http と住所とポート番号」の組。ブラウザはこれが同じかどうかで安全の判断をする。
 - **たとえ**: 同じ建物の同じ部屋かどうか。
-- **ラボで見られる場所**: 画面も API も `http://localhost:18080` の同じオリジン。
+- **ラボで見られる場所**: 画面は `http://www.lab.localhost:18080`、API は `http://api.lab.localhost:18080`。ホスト名が違うので**別のオリジン**です([CORS](#cors) が効く)。
 
 ### リバースプロキシ {#reverse-proxy}
 - **一言でいうと**: アプリの前に立ち、リクエストを受けて奥のアプリへ振り分ける係。
 - **たとえ**: ビルの受付。用件を聞いて担当の部署へ案内する。
-- **ラボで見られる場所**: edge(nginx)。
+- **ラボで見られる場所**: cdn-waf と ingress(どちらも nginx)。
 
 ### CDN {#cdn}
 - **一言でいうと**: 利用者の近くに置いたサーバーで、ページや画像を代わりに返す仕組み。
 - **たとえ**: 本店の商品を、駅前の支店にも並べておく。
-- **ラボで見られる場所**: edge のキャッシュが CDN の代わり。
+- **ラボで見られる場所**: cdn-waf のキャッシュが CDN の代わり(CCv2 の案件では別に契約する CDN に当たる)。
 
 ### キャッシュ {#cache}
 - **一言でいうと**: 一度作った答えを取っておき、同じ質問にはそれを返すこと。
 - **たとえ**: よく出る料理を作り置きしておく。
-- **ラボで見られる場所**: edge が商品一覧・詳細を 30 秒ためる。[前段のキャッシュ](/exercises/07-nw-cache)。
+- **ラボで見られる場所**: cdn-waf が画面(`/`・`/p/…`・`/search`)と api の商品・CMS を 30 秒、画像 `/medias/` を 1 日ためる。[前段のキャッシュ](/exercises/07-nw-cache)。
 
 ### TTL {#ttl}
 - **一言でいうと**: 取っておいた答えを使ってよい時間(Time To Live)。
 - **たとえ**: 作り置きの賞味期限。
-- **ラボで見られる場所**: edge の `proxy_cache_valid 200 30s`。
+- **ラボで見られる場所**: cdn-waf の `proxy_cache_valid 200 30s`(画像は `1d`)。
 
 ### X-Cache-Status {#x-cache-status}
-- **一言でいうと**: edge がキャッシュを使ったかどうかを示す応答ヘッダ。HIT(使った)・MISS(無かった)・BYPASS(使わない決まり)など。
+- **一言でいうと**: cdn-waf がキャッシュを使ったかどうかを示す応答ヘッダ。HIT(使った)・MISS(無かった)・BYPASS(使わない決まり)など。
 - **たとえ**: 料理に付いた「作り置き」「作りたて」の札。
-- **ラボで見られる場所**: `curl -I http://localhost:18080/products`。
+- **ラボで見られる場所**: `curl -sI http://www.lab.localhost:18080/p/100001 | grep -i x-cache`。
 
 ### CORS {#cors}
 - **一言でいうと**: 別のオリジンの画面から API を呼んでよいかを、API 側が決める仕組み。
 - **たとえ**: 「この建物の人からの電話だけ取り次ぎます」という受付の決まり。
-- **ラボで見られる場所**: [CORS と IP 制限](/exercises/08-nw-cors-and-ip)。
+- **ラボで見られる場所**: api の `CORS_ALLOWED_ORIGINS`(既定 `http://www.lab.localhost:18080`)。[CORS と IP 制限](/exercises/08-nw-cors-and-ip)。
 
 ### IP 制限 {#ip-restriction}
 - **一言でいうと**: 送り元の住所(IP アドレス)で、通すか断るかを決めること。
 - **たとえ**: 社員用の通用口は、社員証がある人だけ通す。
-- **ラボで見られる場所**: edge の `/admin/`(ホストのブラウザからは 403)。
+- **ラボで見られる場所**: ingress の backoffice の [IP フィルタ](#ip-filter)と、`/admin/`・`/metrics`・`/readyz` の遮断(外からは 403)。
 
 ### タイムアウト {#timeout}
 - **一言でいうと**: 待つ時間の上限。超えたらあきらめる。
 - **たとえ**: 電話の呼び出しは 10 回で切る。
-- **ラボで見られる場所**: SSR 3000ms、edge の接続 3 秒・読み取り 30 秒、DB 接続 3 秒。
+- **ラボで見られる場所**: SSR 3000ms、cdn-waf・ingress の接続 3 秒・読み取り 30 秒、DB 接続 3 秒、Solr 2 秒。
+
+### Ingress {#ingress}
+- **一言でいうと**: Kubernetes で「このホスト名・パスのリクエストを、どの Service に渡すか」を書く設定。実際に振り分けるのは Ingress コントローラー(ラボは ingress-nginx)。
+- **たとえ**: ビルの案内板。「3 階はレジ、4 階は事務所」と書いてあり、受付係がそのとおりに案内する。
+- **ラボで見られる場所**: 本格版の [k8s/generated/base/ingress.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/ingress.yaml)。軽量版は同じ振り分けを ingress コンテナ(nginx)で手書き。
+
+### エンドポイント {#endpoint}
+- **一言でいうと**: 外から入ってくる入口 1 つ 1 つ。ホスト名と、その先の行き先(どの aspect か)の組。
+- **たとえ**: お店の出入口。お客さん用の正面玄関、業者用の搬入口、社員用の通用口。
+- **ラボで見られる場所**: www.lab.localhost → storefront、api.lab.localhost → api、backoffice.lab.localhost → backoffice([manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) の `endpoints`)。CCv2 の Cloud Portal の「エンドポイント」に当たる。
+
+### IP フィルタ {#ip-filter}
+- **一言でいうと**: エンドポイントごとに「この IP アドレスの範囲からだけ通す」と決める設定。範囲の外からは 403。
+- **たとえ**: 社員用の通用口に立つ警備員。社員名簿(許す範囲)に無い人は通さない。
+- **ラボで見られる場所**: backoffice の `BACKOFFICE_IP_ALLOWLIST`(既定 `127.0.0.1/32 172.30.89.0/24 172.30.91.0/24`)と manifest.json の `ipFilters.office`。社外の代わりのネットワーク(軽量版 172.30.90.0/24・本格版 172.30.92.0/24)から開くと 403。本格版では `docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -H 'Host: backoffice.lab.localhost' http://lab-cdn-waf:18080/backoffice/login` で確かめられる。CCv2 のエンドポイントの「IP フィルタ」に当たる。
+
+### X-Forwarded-For {#x-forwarded-for}
+- **一言でいうと**: 前段(CDN やプロキシ)が「本当の利用者の IP」を書いて奥に伝えるヘッダ。誰でも偽れるので、信じる相手を決めておく。
+- **たとえ**: 受付が書く「ご来客: 〇〇様」のメモ。受付以外が書いたメモは信じない。
+- **ラボで見られる場所**: cdn-waf が上書きし、ingress は cdn-waf(172.30.89.10)から来たときだけ信じる(`set_real_ip_from`)。
+
+### プリフライト {#preflight}
+- **一言でいうと**: ブラウザが別オリジンに `Authorization` 付きなどで送る前に、`OPTIONS` で「送ってよいか」を先に聞くこと。
+- **たとえ**: 訪問の前に「伺ってもよろしいですか」と電話で確かめる。
+- **ラボで見られる場所**: 注文(`/users/current/...`)を呼ぶ前の `OPTIONS`。許可していないオリジンなら api が 403。
 
 ## 5. 見張り(SRE)
 
@@ -281,7 +416,7 @@
 ### 指標(メトリクス) {#metrics}
 - **一言でいうと**: あとで数えたり比べたりするための数字。リクエスト数、応答時間、メモリなど。
 - **たとえ**: 体温計や体重計の数字。
-- **ラボで見られる場所**: api・web の `/metrics`。
+- **ラボで見られる場所**: storefront・api・backoffice・worker の `/metrics`(外からは閉じていて、Prometheus が中から集める)。
 
 ### Prometheus {#prometheus}
 - **一言でいうと**: 指標を定期的に集めて保存し、計算やアラートの判定をする道具。
@@ -351,7 +486,7 @@
 ### カーディナリティ {#cardinality}
 - **一言でいうと**: ラベルの値の種類の数。多すぎると見張りの道具が重くなる。
 - **たとえ**: 付箋の色が 100 万色あると、仕分けできない。
-- **ラボで見られる場所**: `/products/1` と `/products/2` を `/products/:id` にまとめている。
+- **ラボで見られる場所**: storefront が `/p/100001` と `/p/100002` を `/p/:code` にまとめている。
 
 ### Alertmanager {#alertmanager}
 - **一言でいうと**: アラートを受け取り、まとめたり重複を除いたりして、通知先に送る係。
@@ -391,7 +526,7 @@
 ### 構造化ログ {#structured-log}
 - **一言でいうと**: ログを 1 行 1 つの JSON のように、項目名つきで出すこと。検索や集計がしやすい。
 - **たとえ**: 手書きの日記ではなく、欄の決まった記録用紙。
-- **ラボで見られる場所**: api(pino)・web・edge のログ。
+- **ラボで見られる場所**: api・backoffice・worker(pino)・storefront・ingress・cdn-waf のログ。
 
 ### Loki {#loki}
 - **一言でいうと**: ログを保管して検索できるようにする道具。
@@ -402,6 +537,36 @@
 - **一言でいうと**: 各コンテナのログを読み取って、Loki へ運ぶ係。
 - **たとえ**: 各部署から記録用紙を回収する係。
 - **ラボで見られる場所**: [config.alloy](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/alloy/config.alloy)。
+
+### トレース {#trace}
+- **一言でいうと**: 1 つのリクエストが、どの部品を通って、それぞれ何秒かかったかを 1 本の道筋として記録したもの。
+- **たとえ**: 宅配便の追跡番号。どの営業所をいつ通ったかが全部分かる。
+- **ラボで見られる場所**: 本格版の Grafana(Tempo)。`GET /p/:code` → `ssr.render` → api の `GET /occ/v2/...` → DB が 1 本につながる。ダッシュボード「サンプルストア 1 リクエストの道筋」で見る。
+
+### スパン {#span}
+- **一言でいうと**: トレースの中の 1 区間。「この部品のこの処理に何秒」を表す。親子でつながる。
+- **たとえ**: 追跡記録の 1 行(「〇〇営業所 到着 10:02 → 出発 10:15」)。
+- **ラボで見られる場所**: storefront の `ssr.render`、api の DB への問い合わせ、worker の `job stockImportJob` など。
+
+### trace_id {#trace-id}
+- **一言でいうと**: トレース 1 本ごとの番号。ログにも入れておくと、ログからトレースへ飛べる。
+- **たとえ**: 追跡番号そのもの。
+- **ラボで見られる場所**: storefront・api のログの `trace_id`(トレースを送っているときだけ入る)。本格版は Grafana でログからトレースに飛べる(Loki のデータソースの derived field。ログの行の「Tempo で道筋を見る」)。
+
+### traceparent {#traceparent}
+- **一言でいうと**: トレースの番号と親の区間を、次の部品に渡す HTTP ヘッダ。これで部品をまたいで道筋がつながる。
+- **たとえ**: 荷物に貼り直す追跡ラベル。
+- **ラボで見られる場所**: storefront が SSR 中に api を呼ぶときに付ける。api は受け取ってその続きとして記録する。CORS の許可ヘッダにも入っている。
+
+### OpenTelemetry {#opentelemetry}
+- **一言でいうと**: トレース(と指標・ログ)を、決まった形で集めて送るための共通の道具と決まり。
+- **たとえ**: どの運送会社でも使える、共通の追跡ラベルの規格。
+- **ラボで見られる場所**: api の [otel.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/otel.js) と storefront の [otel.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server/otel.ts)。`OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ送る。本格版は OpenTelemetry Collector(`http://otel-collector:4318`)が受けて Tempo に渡す。
+
+### Tempo {#tempo}
+- **一言でいうと**: トレースをためておき、Grafana で見られるようにする保管庫。
+- **たとえ**: 追跡記録の保管庫。
+- **ラボで見られる場所**: 本格版だけ。Grafana のデータソース `Tempo`(Deployment `tempo`、`grafana/tempo:2.10.8`。24 時間で消す)。CCv2 の案件では Dynatrace(APM)がこの役も持つ。
 
 ## 6. 試験(QA)
 
@@ -526,17 +691,17 @@
 ### WAF {#waf}
 - **一言でいうと**: 入口で、攻撃らしい入力をふるい落とす仕組み(Web Application Firewall)。
 - **たとえ**: 空港の手荷物検査。
-- **ラボで見られる場所**: edge の ModSecurity。[WAF が攻撃を止める](/exercises/17-sec-waf)。
+- **ラボで見られる場所**: cdn-waf の ModSecurity。[WAF が攻撃を止める](/exercises/17-sec-waf)。
 
 ### ModSecurity {#modsecurity}
 - **一言でいうと**: nginx などに組み込んで使う WAF の本体。
 - **たとえ**: 検査の機械そのもの。
-- **ラボで見られる場所**: edge のイメージ `owasp/modsecurity-crs`。
+- **ラボで見られる場所**: cdn-waf のイメージ `owasp/modsecurity-crs`。
 
 ### OWASP CRS {#owasp-crs}
 - **一言でいうと**: よくある攻撃の見分け方を集めた、WAF の共通ルール集。
 - **たとえ**: 検査機械に入れる「危険物の一覧表」。
-- **ラボで見られる場所**: edge のログの `ruleId`。
+- **ラボで見られる場所**: cdn-waf のログの `ruleId`。
 
 ### 異常スコア {#anomaly-score}
 - **一言でいうと**: 入力の怪しさを点数で足し上げ、決めた点数以上なら遮断する方式。
@@ -551,7 +716,7 @@
 ### 誤遮断 {#false-positive}
 - **一言でいうと**: 普通の入力を、攻撃だと判定して止めてしまうこと。
 - **たとえ**: 手荷物検査で、ただの水筒を止められる。
-- **ラボで見られる場所**: [lab-exclusions-before.conf](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/edge/modsecurity/lab-exclusions-before.conf)(Cookie による誤遮断を直した例)。
+- **ラボで見られる場所**: [lab-exclusions-before.conf](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/cdn-waf/modsecurity/lab-exclusions-before.conf)(狭く外す書き方の見本。第 1 版で Cookie による誤遮断を直した例も、使わなくなった理由と一緒に残している)。
 
 ### DetectionOnly {#detectiononly}
 - **一言でいうと**: WAF を「記録だけ・止めない」で動かすモード。
@@ -561,12 +726,12 @@
 ### レート制限 {#rate-limit}
 - **一言でいうと**: 同じ相手から一定時間に来るリクエストの数に上限を付けること。
 - **たとえ**: 「お 1 人さま 1 日 3 個まで」。
-- **ラボで見られる場所**: edge(ログインは 1 秒 1 回、全体は 1 秒 20 回)。
+- **ラボで見られる場所**: ingress(トークンの発行は IP ごとに 1 秒 1 回)と cdn-waf(全体は IP ごとに 1 秒 20 回)。
 
 ### バースト {#burst}
 - **一言でいうと**: レート制限の中で、短い時間なら少しまとめて受け付ける余裕。
 - **たとえ**: 「普段は 1 人ずつ、最初だけ 5 人までまとめて入れる」。
-- **ラボで見られる場所**: ログインの `burst=5`、全体の `burst=40`。
+- **ラボで見られる場所**: トークンの発行の `burst=5`(ingress)、全体の `burst=80`(cdn-waf)。
 
 ### 429 {#http-429}
 - **一言でいうと**: 「回数が多すぎます」を表す HTTP の状態コード(Too Many Requests)。
@@ -581,12 +746,12 @@
 ### CSP {#csp}
 - **一言でいうと**: 「このページが読み込んでよい物」の一覧をブラウザに渡し、それ以外を動かさない仕組み(Content Security Policy)。
 - **たとえ**: 招待客の名簿。名簿にない人は会場に入れない。
-- **ラボで見られる場所**: docker-compose.yml の `EDGE_CSP`。[CSP で外部スクリプトを止める](/exercises/19-sec-csp)。
+- **ラボで見られる場所**: docker-compose.yml の `WWW_CSP`(www 用。api と backoffice はそれぞれ別の CSP)。[CSP で外部スクリプトを止める](/exercises/19-sec-csp)。
 
 ### セキュリティヘッダ {#security-headers}
 - **一言でいうと**: ブラウザに安全な動きを頼む応答ヘッダ。CSP、X-Frame-Options(他のサイトに埋め込ませない)など。
 - **たとえ**: 荷物に貼る「天地無用」「われもの注意」のシール。
-- **ラボで見られる場所**: `curl -I http://localhost:18080/` の応答。
+- **ラボで見られる場所**: `curl -sI http://www.lab.localhost:18080/` の応答。
 
 ### 非 root {#non-root}
 - **一言でいうと**: コンテナの中のアプリを、何でもできる管理者(root)ではなく一般ユーザーで動かすこと。

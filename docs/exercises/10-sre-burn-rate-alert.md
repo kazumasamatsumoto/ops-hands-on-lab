@@ -5,47 +5,45 @@ title: SRE-2 エラーバジェットとアラート
 # SRE-2 エラーバジェットとアラート
 
 ::: info この演習について
-- 所要時間: 約 20 分(アラートが鳴って、止むまで待つ時間を含む)
-- 使うもの: 軽量版(docker compose)。k6、Prometheus(http://localhost:19090)、Alertmanager(http://localhost:19093)、pager(http://localhost:19094)
-- 関係する設計書: [SRE 方式 4.3 アラート](/design/architecture/05-sre#s4-3)・[SRE 方式 4.5 通知の届け方](/design/architecture/05-sre#s4-5)・[D-SRE-02 SLO とバーンレートのアラート](/design/detail/D-SRE-02-slo-burn-rate)
+- 所要時間: 約 20 分
+- 使うもの: 軽量版(docker compose)。`tools/chaos.sh`、`tools/k6.sh`、Prometheus(http://localhost:19090)、Alertmanager(http://localhost:19093)、pager(http://localhost:19094)
+- 仕組みはこちら: [仕組み-11 観測(指標・ログ・トレース)](/how-it-works/11-observability)
+- 関係する設計書: [SRE 方式](/design/architecture/05-sre)・[D-SRE-02 SLO とバーンレートのアラート](/design/detail/D-SRE-02-slo-burn-rate)
+- 用語集: [バーンレート](/guide/glossary#burn-rate)・[マルチウィンドウ](/guide/glossary#multi-window)・[Alertmanager](/guide/glossary#alertmanager)・[pager](/guide/glossary#pager)・[抑止(inhibit)](/guide/glossary#inhibit)
 :::
-
-[SRE-1](./09-sre-sli-slo) で SLI と SLO を見たあとに進むと分かりやすいです。
 
 ## 1. この設計書はなぜ必要か
 
-アラート(人を呼ぶ仕組み)は、**鳴らなさすぎても、鳴りすぎても** 役に立ちません。
+失敗が起きたとき、**いつ・誰を起こすか** を決めておかないと、夜中に些細なことで人を叩き起こしたり、逆に本当の大事故を見逃したりします。
 
-> **よくある事故(鳴りすぎ)**: 「エラーが 1 件でも出たら担当者の携帯に電話」という設定にしました。
-> 夜中に何度も電話が鳴りますが、ほとんどは 1 件だけの一時的なエラーで、朝には自然に直っていました。
-> 3 か月後、担当者は通知を無視するようになり、本当に注文が全部失敗し始めた夜も、誰も起きませんでした(オオカミ少年)。
->
-> **よくある事故(鳴らなさすぎ)**: 「エラー率が 5% を 30 分続いたら」という設定にしたところ、2% のエラーが 3 日続いても誰も気づかず、1 か月分の目標を大きく割り込みました。
+> **よくある事故**: 「エラーが 1 件でも出たら通知」にしていたら、通知が鳴りすぎて誰も見なくなりました(オオカミ少年)。
+> ある日、本当にお店が半分落ちましたが、いつもの通知に埋もれて 3 時間気づかれませんでした。
 
-「どれくらいの速さで目標(SLO)を食いつぶしているか」で鳴らせば、一時的なぶれでは鳴らさず、じわじわ続く悪化は見逃しません。これを SRE の方式設計書に書きます。
+「どれくらいの速さで失敗しているか(バーンレート)」で通知の重さを変える、という決め方を SRE の方式設計書に書きます。
 
 ## 2. 何をやっているのか
 
-SLO「1 か月の成功率 99.9%」なら、1 か月で失敗してよい量(**エラーバジェット**)は全体の 0.1% です。
-**バーンレート** は「今のエラー率が、ちょうど 1 か月で予算を使い切る速さの何倍か」です(= その窓のエラー率 ÷ 0.001)。
-サンプルストアのアラートルール(`observability/prometheus/rules/slo-alerts.yml`)は次のように鳴ります。
+**バーンレート**は、「エラーバジェット(1 か月で失敗してよい量)を、今の速さだと何倍の速さで使っているか」です。1.0 なら「ちょうど 1 か月で使い切る速さ」、10 なら「3 日で使い切る速さ」です。
+サンプルストアは、**短い窓(1 分・5 分)と長い窓(1 時間・6 時間)を組み合わせて** アラートを鳴らします(マルチウィンドウ)。
 
-| アラート | 条件 | 意味 | 通知 |
-| --- | --- | --- | --- |
-| `ErrorBudgetBurnPage`(緊急) | 5 分窓 と 1 時間窓 の両方でバーンレート > 14.4 が 1 分続く | 1 時間で 1 か月分の予算の 2% を使う速さ。このままだと約 2 日で使い切る | 今すぐ人を起こす |
-| `ErrorBudgetBurnTicket`(警告) | 30 分窓 と 6 時間窓 の両方で > 6 が 5 分続く | 6 時間で 5% を使う速さ | 営業時間内に対応 |
-| `ErrorBudgetBurnDemo`(デモ用) | 1 分窓 と 5 分窓 で > 14.4 | 演習ですぐ鳴る様子を見るためだけの物 | 本番では使わない |
+- **緊急(Page)**: 速く大きく燃えている → すぐ人を起こす
+- **警告(Ticket)**: ゆっくり燃えている → 翌営業日でよい
+- **デモ用(Demo)**: 演習で短時間で鳴らすための、早く鳴るアラート
 
-鳴ったアラートは Alertmanager がまとめ、ラボの中の通知の受け口 pager に送ります(外には何も送りません)。
+演習では、api の半分を 500 にして、緊急がどう鳴り、スイッチを戻すとどう止むかを見ます。
 
-たとえ: **バーンレートは「お小遣いの減る速さ」** です。1 か月 3,000 円のお小遣いで、今日 1 日に 1,000 円使ったら「このままだと 3 日でなくなる」と分かります(バーンレート 10)。
-「1 回 100 円使ったら親に連絡」ではうるさすぎ、「月末に残高を見る」では遅すぎます。**減る速さで知らせる** のがちょうどよいのです。
-2 つの窓を両方見るのは、「さっきまで使いすぎていた」だけで今は止まっているなら、もう知らせなくてよいからです。
+たとえ: **家計** です。今月の予算(エラーバジェット)を、月末までに使い切る速さで使っているかを見ます。
+1 日で今月分を使うような激しい浪費(高いバーンレート)なら、すぐ家族会議(緊急)。じわじわ超えそうなら、来週相談(警告)。
+「1 分窓」は最近の勢い、「1 時間窓」は「たまたまではなく続いているか」を見ています。
+
+::: tip CCv2 では
+バーンレートのアラートは、監視ツール(Dynatrace)でも同じ考え方で組めます。「短い窓と長い窓を両方満たしたときだけ鳴らす」ことで、一瞬のぶれで人を起こさず、
+本物の事故は見逃さない、という設計です。通知先(このラボの pager)は、実案件では当番の呼び出し(オンコール)やチケットになります。
+:::
 
 ## 3. まず触ってみる
 
-1. **前の演習のアラートが残っていないか確かめる**。Prometheus の http://localhost:19090/alerts がすべて緑(Inactive)ならそのまま進めます。
-   赤や黄色が残っているときは、次のコマンドで指標と通知の記録をまっさらにしてから始めます(Alertmanager は同じ通知を 1 時間は送り直さないため、残っていると pager に何も届きません)。
+1. **前の演習のアラートや指標が残っていないか、まっさらにする**(Alertmanager は同じ通知を 1 時間は送り直さないため、残っていると pager に何も届きません)。
 
    ```bash
    docker compose rm -sf prometheus alertmanager pager
@@ -60,13 +58,13 @@ SLO「1 か月の成功率 99.9%」なら、1 か月で失敗してよい量(**�
    tools/k6.sh browse.js -e DURATION=3m -e PAGES=0
    ```
 
-3. **k6 を走らせている間に、別のターミナルでアラートの状態を見る**。http://localhost:19090/alerts を開いて 10 秒ごとに再読み込みするか、次のコマンドで 5 秒ごとに表示します(Ctrl+C で止める)。
+3. **k6 を走らせている間に、別のターミナルでアラートの状態を見る**。http://localhost:19090/alerts を開いて再読み込みするか、次のコマンドで 10 秒ごとに表示します(Ctrl+C で止める)。
 
    ```bash
    while true; do
      printf '%s ' "$(date +%H:%M:%S)"
-     curl -s http://localhost:19090/api/v1/alerts | python3 -c 'import json,sys;print(" ".join(sorted(a["labels"]["alertname"]+"="+a["state"] for a in json.load(sys.stdin)["data"]["alerts"])))'
-     sleep 5
+     curl -s http://localhost:19090/api/v1/alerts | python3 -c 'import json,sys;print(" ".join(sorted(a["labels"]["alertname"]+"="+a["state"] for a in json.load(sys.stdin)["data"]["alerts"] if a["labels"]["alertname"].startswith("Error"))))'
+     sleep 10
    done
    ```
 
@@ -87,96 +85,85 @@ SLO「1 か月の成功率 99.9%」なら、1 か月で失敗してよい量(**�
    tools/chaos.sh reset
    ```
 
-   1 分窓はすぐ 0 に戻り、5 分窓は 5 分かけて下がります。pager に「解決(resolved)」の通知が届くのを待ちます。
+   1 分窓はすぐ 0 に戻り、5 分窓は 5 分かけて下がります。pager に状態が「解消」(resolved)の通知が届くのを待ちます(届いたばかりの通知は「発生中」と表示されます)。
 
 ## 4. 何が見えたら成功か
 
-**手順 3**: 壊してから約 15 秒でデモ用が鳴り、約 75 秒で緊急(Page)が鳴ります(下の記録は、時刻の代わりに「壊してからの秒数」と、どのサービス(api)かも出るようにして取った物です)。
+**手順 3**: 壊してから約 30 秒でデモ用が鳴り、約 90 秒で緊急(Page)が鳴ります(実測)。`pending` は「条件は満たしたが、決めた時間続くのを待っている」状態です。一瞬のぶれで鳴らさないための待ち時間です。
 
 ```text
-+  5s
-+ 15s ErrorBudgetBurnDemo(api)=firing ErrorBudgetBurnPage(api)=pending ErrorBudgetBurnTicket(api)=pending
-...
-+ 71s ErrorBudgetBurnDemo(api)=firing ErrorBudgetBurnPage(api)=pending ErrorBudgetBurnTicket(api)=pending
-+ 76s ErrorBudgetBurnDemo(api)=firing ErrorBudgetBurnPage(api)=firing ErrorBudgetBurnTicket(api)=pending
+12:04:26                                   ← 壊した直後。まだ何も出ない
+12:04:57 ErrorBudgetBurnDemo=firing ErrorBudgetBurnPage=pending ErrorBudgetBurnTicket=pending   ← 約 30 秒
+12:05:27 ErrorBudgetBurnDemo=firing ErrorBudgetBurnPage=pending ErrorBudgetBurnTicket=pending
+12:05:57 ErrorBudgetBurnDemo=firing ErrorBudgetBurnPage=firing ErrorBudgetBurnTicket=pending    ← 約 90 秒
 ```
 
-`pending` は「条件は満たしたが、決めた時間(Page は 1 分)続くのを待っている」状態です。一瞬のぶれでは鳴らさないための待ち時間です。
+(手順 1 の直後に打つと、Prometheus の起動が終わる前の数秒だけ `JSONDecodeError` が出ることがあります。10 秒後の次の行から正しく出ます。)
 
-**手順 4**: api のエラー率は約 49%、バーンレートは約 490。「1 か月の予算を約 1.5 時間で使い切る」速さです(30 日 × 24 時間 ÷ 490)。
+**手順 4**: api のエラー率は約 54%、バーンレートは約 540。「1 か月の予算を約 1.3 時間で使い切る」速さです(30 日 × 24 時間 ÷ 540 ≈ 1.3)。
 
 ```text
-job:http_errors:ratio_rate5m{job="api"}  0.486
-job:slo_burn_rate:1m{job="api"}          525.4
-job:slo_burn_rate:5m{job="api"}          489.4
-job:slo_burn_rate:1h{job="api"}          489.4
+job:http_errors:ratio_rate5m{job="api"}  0.542
+job:slo_burn_rate:1m{job="api"}          632.4
+job:slo_burn_rate:5m{job="api"}          542.1
+job:slo_burn_rate:1h{job="api"}          542.1
 ```
 
-一方、edge を通したお客様(k6)から見た失敗は 13.97% でした。商品 API の成功した答えが edge にためられ(キャッシュ)、失敗の一部を隠してくれたためです。**どこで測るか** で数字が変わることも覚えておきましょう。
+一方、cdn-waf を通したお客様(k6)から見た失敗は約 17% でした。商品の成功した答えが cdn-waf にためられ(キャッシュ)、失敗の一部を隠したためです。**どこで測るか** で数字が変わることも覚えておきましょう。
 
 ```text
-http_req_failed................: 13.97% 83 out of 594
+http_req_failed................: 17.27% 114 out of 660
 ```
 
-**手順 5〜6**: pager に届いた通知(時刻は世界標準時)。
+**手順 5**: pager に届いた通知(時刻は日本時間)。
 
 ```text
-15:23:12 firing   ErrorBudgetBurnDemo  demo    【デモ用】api: バーンレートが 14.4 を超えました(1 分窓と 5 分窓)
-15:24:12 firing   ErrorBudgetBurnPage  page    api: エラーバジェットを急速に消費しています(緊急)
-15:26:12 resolved ErrorBudgetBurnDemo  demo
-15:30:12 resolved ErrorBudgetBurnPage  page
-15:30:12 firing   ErrorBudgetBurnTicket ticket
+10:39:02 firing   ErrorBudgetBurnDemo  api
+10:40:02 firing   ErrorBudgetBurnPage  api
 ```
 
-**手順 6 の止み方**: 戻してから 1 分窓は約 1 分で 0 に、5 分窓は約 5 分かけて下がり、5 分窓が 14.4 を下回った時点で緊急が解決しました。
+**手順 6 の止み方**: 戻してから 1 分窓は約 1 分で 0(`nan`)に、5 分窓は約 5 分かけて下がり、5 分窓が基準を下回った時点で緊急が解決しました。
 1 時間窓はまだ高いままですが、「今はもう起きていない」ので鳴らし続けません。これが 2 つの窓の効き目です。
 
 ```text
-+ 64s 1m=0.0 5m=471.6 ErrorBudgetBurnPage=firing ErrorBudgetBurnTicket=pending
-...
-+299s 1m=nan 5m=93.0  ErrorBudgetBurnPage=firing ErrorBudgetBurnTicket=firing
-+307s 1m=nan 5m=0.0   ErrorBudgetBurnTicket=firing
+10:43:02 resolved ErrorBudgetBurnDemo  api
+10:47:02 resolved ErrorBudgetBurnPage  api
+10:47:07 firing   ErrorBudgetBurnTicket api
 ```
 
-(`nan` は「その窓にリクエストが 1 件も無いので、割り算ができない」という意味です。k6 が終わったあとに出ます。)
-
-警告(Ticket)は、緊急が鳴っている間は Alertmanager が **黙らせて** いて(抑制)、緊急が解決したところで届きました。
-同じ問題で通知が 2 重に鳴らないための工夫です。Ticket は 30 分窓を見ているので、しばらく鳴り続けます。
+(`nan` は「その窓にリクエストが 1 件も無いので割り算ができない」という意味です。k6 が終わったあとに出ます。)
+警告(Ticket)は、緊急が鳴っている間は Alertmanager が **黙らせて**(抑制)いて、緊急が解決したところで届きました。
+同じ問題で通知が 2 重に鳴らないための工夫です。Ticket は長い窓(30 分・6 時間)を見ているので、しばらく鳴り続けます。
 
 ## 5. ここで覚える言葉
 
 | 言葉 | 一言でいうと | たとえ | この演習で見たもの |
 | --- | --- | --- | --- |
-| エラーバジェット | SLO の範囲で失敗してよい量 | 1 か月のお小遣い | 99.9% → 0.1% |
-| バーンレート | 予算を使う速さ(ちょうど 1 か月で使い切る速さの何倍か) | お小遣いの減る速さ | `job:slo_burn_rate:5m` = 489.4 |
-| 窓 | どれだけの時間をまとめて見るか | 家計簿を 1 日単位で見るか 1 週間単位で見るか | 1 分・5 分・1 時間 |
-| マルチウィンドウ | 長い窓と短い窓の両方が悪いときだけ鳴らす | 「今週使いすぎ」かつ「今日も使っている」なら注意 | 5 分窓が下がると Page が解決 |
-| page と ticket | 今すぐ人を起こす通知と、営業時間内に見ればよい通知 | 火事の非常ベルと、回覧板 | `severity: page` / `ticket` |
-| pending / firing / resolved | 様子見中 / 鳴っている / 直った | 煙を感知 → ベルが鳴る → 鎮火の知らせ | Page が 71 秒で pending、76 秒で firing |
-| 抑制(inhibit) | 大きい通知が鳴っている間、同じ原因の小さい通知を黙らせる | 非常ベル中は回覧板を回さない | Ticket が suppressed、Page 解決後に届いた |
-| Alertmanager | アラートをまとめ、重複を除いて届ける係 | 電話の取り次ぎ係 | http://localhost:19093 |
+| [バーンレート](/guide/glossary#burn-rate) | エラーバジェットを何倍の速さで使っているか | 予算の使い過ぎの速さ | 1h 窓で約 540 倍 |
+| [マルチウィンドウ](/guide/glossary#multi-window) | 短い窓と長い窓を組み合わせて判定する | 「今の勢い」と「続いているか」を両方見る | 1 分・5 分と 1 時間・6 時間 |
+| 緊急(Page)と 警告(Ticket) | すぐ起こす通知 / 翌営業日でよい通知 | 救急車 / 予約診療 | Page はすぐ、Ticket は長い窓 |
+| [Alertmanager](/guide/glossary#alertmanager) | アラートをまとめ、通知先に振り分ける係 | 火災報知器の集中管理盤 | 同じ通知を 1 時間は送り直さない |
+| [pager](/guide/glossary#pager) | 通知を受け取って一覧に出す受け口 | 呼び出しの掲示板 | firing / resolved が並ぶ |
+| [抑止(inhibit)](/guide/glossary#inhibit) | 上位の通知が鳴っている間、下位を黙らせる | 救急対応中は予約診療の呼び出しを止める | 緊急が解決してから Ticket が届く |
 
 ## 6. 設計書ではここに書く
 
-- **[SRE 方式 4.3 アラート](/design/architecture/05-sre#s4-3)**: 「アラートはバーンレートで鳴らす。緊急 = 5 分窓と 1 時間窓で 14.4 超、警告 = 30 分窓と 6 時間窓で 6 超」と、**数字の出し方(14.4 = 2% × 720 時間 ÷ 1 時間)** まで書きます。
-  「CPU 使用率など、お客様の体験に直結しない物では人を起こさない」とも書きます。
-- **[SRE 方式 4.5 通知の届け方](/design/architecture/05-sre#s4-5)**: page はどこに(当番の携帯など)、ticket はどこに(チケット管理)、誰が当番か、抑制のルール。
-- **[D-SRE-02 SLO とバーンレートのアラート](/design/detail/D-SRE-02-slo-burn-rate)**(一般のカタログでは D-SRE-02): アラートルールの式、`for`(待ち時間)、ラベル、通知文の中身、そして **鳴ったら最初に見る場所**(ダッシュボードの URL、手順書)。
-- **[障害対応方式 4.3 気づき方と一次対応](/design/architecture/08-incident-response#s4-3)**: page を受けた人が 15 分以内にすること。
+- **[SRE 方式 4.3 アラート](/design/architecture/05-sre#s4-3)・[4.5 通知の届け方](/design/architecture/05-sre#s4-5)**: バーンレートのしきい値、窓の組み合わせ、緊急と警告の分け方、通知先。
+- **[D-SRE-02 4.2 アラート](/design/detail/D-SRE-02-slo-burn-rate#s4-2)・[4.4 通知(Alertmanager)](/design/detail/D-SRE-02-slo-burn-rate#s4-4)**: アラートの名前・条件・for(待ち時間)・抑制の関係。
+- **[障害対応方式](/design/architecture/08-incident-response)**: 緊急が鳴ったときに、誰が何分以内に動くか。
 
 ## 7. レビューで聞く質問
 
-- 「このアラートが鳴ったとき、お客様は実際に困っていますか。困っていないのに人を起こすことはありませんか。」
-- 「アラートの数字(14.4 など)はどこから来ましたか。SLO から計算した式が書いてありますか。」
-- 「一時的なぶれで鳴らないための工夫(窓を 2 つ、待ち時間)はありますか。」
-- 「鳴ったら誰に届きますか。その人は、届いたあと最初に何を見ればよいか分かりますか。」
-- 「この 1 か月で、何回鳴って、そのうち何回が本当に対応の要るものでしたか。」
-- 「直ったとき(resolved)も知らせますか。同じ原因で通知が何重にも届かない仕組みはありますか。」
+- 「緊急(すぐ起こす)と警告(翌営業日)の線は、どのバーンレートで引きますか。」
+- 「一瞬のぶれで人を起こさない工夫(短い窓と長い窓の両方、for の待ち時間)は入っていますか。」
+- 「同じ問題で通知が何重にも鳴らないようにしていますか(抑制)。」
+- 「通知が鳴りすぎて誰も見なくなる状態を、どう防ぎますか。」
+- 「エラーバジェットを使い切ったとき、開発を止めて安定に振る、といった取り決めはありますか。」
 
 ## 8. 片付け
 
 ```bash
-tools/chaos.sh reset          # errorRate を 0 に戻す(手順 6 で済んでいれば不要)
+tools/chaos.sh reset
 ```
 
-警告(Ticket)は 30 分窓を見ているので、30 分ほど鳴り続けてから自然に解決します。すぐに消したいときは、手順 1 のコマンドで Prometheus・Alertmanager・pager をまっさらにします。
+Ticket(警告)は長い窓を見ているので、しばらく残ります。急いで消したいときは、手順 1 のまっさらにするコマンドをもう一度実行します。

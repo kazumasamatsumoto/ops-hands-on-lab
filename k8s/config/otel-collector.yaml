@@ -1,0 +1,43 @@
+# OpenTelemetry Collector(トレースの集配所)の設定です。本格版だけで使います。
+#
+# ■ 流れ
+#   storefront・api・backoffice・worker ──OTLP/HTTP(4318)──▶ otel-collector ──OTLP/gRPC(4317)──▶ Tempo(保存)──▶ Grafana で見る
+#   アプリは環境変数 OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318 を見て、ここへ送ります(manifest.json の tracing)。
+#
+# ■ なぜ Tempo に直接送らないのか
+#   集配所を 1 つ挟むと、送り先(Tempo・Dynatrace・別の製品)を変えるときに、アプリではなくここだけ直せば済みます。
+#   まとめて送る(batch)・メモリを使いすぎたら受け取りを止める(memory_limiter)のような調整もここでします。
+#   CCv2 では Dynatrace の OneAgent が同じ役目(アプリの外で集めて送る)をします。
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+      grpc:
+        endpoint: 0.0.0.0:4317
+
+processors:
+  # メモリの使いすぎを防ぐ見張り役(上限に近づいたら受け取りを断ります)。Pod の上限 128Mi に合わせています。
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 100
+    spike_limit_mib: 20
+  # 区間(span)をまとめて送り、通信の回数を減らします。
+  batch:
+    timeout: 2s
+
+exporters:
+  otlp:
+    endpoint: tempo:4317
+    tls:
+      insecure: true # ラボの中だけの通信なので暗号化しません(本番では TLS を使います)
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch]
+      exporters: [otlp]
+  telemetry:
+    logs:
+      level: warn

@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  サンプルストアの商品の索引の「設計図」(スキーマ)です。どの項目を、どう切り分けて索引にするかを決めます。
+  worker の searchIndexJob が、DB の商品をこの形の文書にして Solr に送ります。
+-->
+<schema name="samplestore-products" version="1.6">
+  <!-- 文書を 1 つに決める項目(主キー)。商品コードです。 -->
+  <uniqueKey>code</uniqueKey>
+
+  <field name="_version_" type="plong" indexed="false" stored="false" docValues="true"/>
+  <field name="code" type="string" indexed="true" stored="true" required="true"/>
+  <field name="name" type="text_cjk" indexed="true" stored="true"/>
+  <field name="summary" type="text_cjk" indexed="true" stored="true"/>
+  <field name="category_code" type="string" indexed="true" stored="true"/>
+  <field name="category_name" type="text_cjk" indexed="true" stored="true"/>
+  <field name="price" type="pint" indexed="true" stored="true" docValues="true"/>
+  <field name="stock" type="pint" indexed="true" stored="true" docValues="true"/>
+  <!-- 名前順に並べるための、切り分けない写し。 -->
+  <field name="name_sort" type="string" indexed="false" stored="false" docValues="true"/>
+  <copyField source="name" dest="name_sort"/>
+
+  <fieldType name="string" class="solr.StrField" sortMissingLast="true"/>
+  <fieldType name="pint" class="solr.IntPointField"/>
+  <fieldType name="plong" class="solr.LongPointField"/>
+
+  <!--
+    日本語向けの切り分け(CJK バイグラム)。
+    日本語は単語の間に空白が無いので、「2 文字ずつ重ねて切る」ことで、どこからでも探せるようにします。
+    例: 「ボールペン」 → ボー / ール / ルペ / ペン。 検索語「ペン」→ ペン。 → 当たる。
+    索引側は 1 文字ずつ(unigram)も作っておき、1 文字だけの検索語(例: 紺)でも当たるようにしています。
+    全角・半角の違い(ＡＢＣ と ABC、ｶﾀｶﾅ と カタカナ)や、英字の大文字・小文字もそろえます。
+    (形態素解析(辞書で単語に切る方法)もありますが、ここでは設定が少なく結果が読みやすいこちらを使います)
+  -->
+  <fieldType name="text_cjk" class="solr.TextField" positionIncrementGap="100" autoGeneratePhraseQueries="true">
+    <analyzer type="index">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.CJKWidthFilterFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.CJKBigramFilterFactory" outputUnigrams="true"/>
+    </analyzer>
+    <analyzer type="query">
+      <tokenizer class="solr.StandardTokenizerFactory"/>
+      <filter class="solr.CJKWidthFilterFactory"/>
+      <filter class="solr.LowerCaseFilterFactory"/>
+      <filter class="solr.CJKBigramFilterFactory" outputUnigrams="false"/>
+    </analyzer>
+  </fieldType>
+</schema>

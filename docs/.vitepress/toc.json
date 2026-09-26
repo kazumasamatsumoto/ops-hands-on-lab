@@ -7,6 +7,21 @@
     ["checklist", "開発・運用に必要なこと一覧"],
     ["glossary", "用語集"]
   ],
+  "how-it-works": [
+    ["00-overview", "仕組み-0 クリックから DB まで(全体の流れ)"],
+    ["01-cdn-waf", "仕組み-1 cdn-waf(CDN と WAF)"],
+    ["02-ingress-and-endpoints", "仕組み-2 ingress(エンドポイントと IP フィルタ)"],
+    ["03-kubernetes-basics", "仕組み-3 Kubernetes の基本"],
+    ["04-storefront-ssr", "仕組み-4 storefront の SSR"],
+    ["05-headless-cms", "仕組み-5 ヘッドレスと CMS 駆動の描画"],
+    ["06-api-occ", "仕組み-6 api(OCC・fields・CORS)"],
+    ["07-oauth-token", "仕組み-7 OAuth のトークン"],
+    ["08-aspects-and-worker", "仕組み-8 aspect と worker"],
+    ["09-search-solr", "仕組み-9 検索と Solr"],
+    ["10-db-and-backup", "仕組み-10 DB とバックアップ"],
+    ["11-observability", "仕組み-11 観測(指標・ログ・トレース)"],
+    ["12-manifest-and-environments", "仕組み-12 manifest と環境(d1・s1・p1)"]
+  ],
   "exercises": [
     ["01-fe-ssr-vs-csr", "FE-1 SSR と CSR を見比べる"],
     ["02-fe-ssr-rules", "FE-2 SSR で壊れる書き方"],
@@ -26,7 +41,9 @@
     ["16-dr-backup-restore", "DR-1 バックアップから戻す(RTO と RPO を測る)"],
     ["17-sec-waf", "セキュリティ-1 WAF が攻撃を止める"],
     ["18-sec-rate-limit-login", "セキュリティ-2 ログインの連打を止める"],
-    ["19-sec-csp", "セキュリティ-3 CSP で外部スクリプトを止める"]
+    ["19-sec-csp", "セキュリティ-3 CSP で外部スクリプトを止める"],
+    ["20-nw-ingress-endpoints", "ネットワーク-3 Ingress とエンドポイント"],
+    ["21-headless-cms", "ヘッドレス-1 CMS の JSON が画面になるまで"]
   ],
   "architecture": [
     ["00-overall", "全体方式"],
@@ -43,10 +60,11 @@
   ],
   "detail": [
     ["D-FE-04-product-detail", "D-FE-04 商品詳細画面"],
+    ["D-FE-05-headless-cms", "D-FE-05 CMS 駆動の描画(ヘッドレス)"],
     ["D-FE-22-ssr-server", "D-FE-22 SSR サーバー(server.ts)"],
     ["D-BE-orders-api", "D-BE 注文 API と認可"],
     ["D-INF-01-compose-and-k8s", "D-INF-01 起動構成(compose と Kubernetes)"],
-    ["D-NW-01-edge-route", "D-NW-01 edge の経路とキャッシュ"],
+    ["D-NW-01-edge-route", "D-NW-01 cdn-waf と ingress の経路とキャッシュ"],
     ["D-SRE-02-slo-burn-rate", "D-SRE-02 SLO とバーンレートのアラート"],
     ["D-QA-04-e2e", "D-QA-04 E2E テスト"],
     ["D-PERF-05-load-test", "D-PERF-05 負荷試験"],

@@ -5,20 +5,22 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 # DR-1 バックアップから戻す(RTO と RPO を測る)
 
 ::: info この演習について
-- 所要時間: 約 20 分
-- 使うもの: 軽量版(docker compose)。`tools/backup.sh`・`tools/restore.sh`、`psql`(db コンテナの中の物を使います)
-- 関係する設計書: [DR 方式 4.2 バックアップ](/design/architecture/09-disaster-recovery#s4-2)・[DR 方式 4.3 復元](/design/architecture/09-disaster-recovery#s4-3)・[DR 方式 4.4 RTO と RPO を測る](/design/architecture/09-disaster-recovery#s4-4)・[D-DR-02 バックアップと復元](/design/detail/D-DR-02-backup-restore)
+- 所要時間: 約 15 分
+- 使うもの: 軽量版(docker compose)。`curl`、`tools/backup.sh`、`tools/restore.sh`、`psql`
+- 仕組みはこちら: [仕組み-10 DB とバックアップ](/how-it-works/10-db-and-backup)
+- 関係する設計書: [DR 方式](/design/architecture/09-disaster-recovery)・[D-DR-02 バックアップと復元](/design/detail/D-DR-02-backup-restore)
+- 用語集: [バックアップ](/guide/glossary#backup)・[リストア(復元)](/guide/glossary#restore)・[RTO](/guide/glossary#rto)・[RPO](/guide/glossary#rpo)
 :::
 
 ## 1. この設計書はなぜ必要か
 
-「バックアップは取っています」は、「戻せます」とは違います。戻したことが一度も無いバックアップは、無いのと同じです。
+「バックアップは取っている」だけでは、いざというときに戻せません。**戻すのにどれだけ時間がかかるか(RTO)**、**どれだけのデータを失うか(RPO)** を測り、それが合意した範囲に収まるかを確かめておく必要があります。
 
-> **よくある事故**: 月末の締め作業で、担当者が検証用のつもりで本番の DB につながったまま、条件を付け忘れた削除の命令を実行しました。注文のデータが全部消えました。
-> バックアップから戻そうとしたら、①バックアップは 3 か月前から失敗し続けていた、②手順書が無く、戻し方を知る人が休暇中、③やっと戻せたのは 2 日後。
-> しかも発注元とは「どれくらいで戻す約束か」「どこまでのデータなら失ってよいか」を一度も話していませんでした。
+> **よくある事故**: 毎晩バックアップを取っていました。ある日、運用の担当者が条件を付け忘れて注文テーブルを全部消しました。
+> いざ戻そうとすると、そのバックアップは一度も復元を試したことがなく、手順書も古く、戻し終えるまで半日かかりました。
+> しかも、最後のバックアップから事故までの半日ぶんの注文は、戻ってきませんでした。
 
-どれくらいの時間で戻すか(**RTO**)、どの時点まで戻れればよいか(**RPO**)を先に合意し、実際に戻して測る。これを DR(災害からの復旧)の方式設計書に書きます。
+「守る物」「バックアップの取り方・間隔」「戻す手順」「RTO と RPO の目標と実績」を、DR の方式設計書で決め、訓練で確かめます。
 
 ## 2. 何をやっているのか
 
@@ -30,16 +32,23 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 「どこからやり直せるか」(= 最後のセーブ以降の進みは消える)が RPO、「やり直して元の場面に戻るまでの時間」が RTO です。
 そして、セーブデータが本当に読み込めるかは、一度読み込んでみないと分かりません。
 
+::: tip CCv2 では
+CCv2 では DB のバックアップは SAP 側が用意します。案件で決めるのは「どこまで戻せる約束か(RPO)」「戻すのにどれだけかかる約束か(RTO)」と、
+自分たちで作った表・データを、その約束の中で戻せるかの確認です。「一度も復元を試していないバックアップは、無いのと同じ」なのはどの環境でも共通です。
+:::
+
 ## 3. まず触ってみる
 
-1. **alice の札を用意し、今の注文を見る**。
+1. **alice のトークンを用意し、今の注文を見る**。
 
    ```bash
-   TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-     -d '{"username":"alice","password":"password"}' http://localhost:18080/api/login \
-     | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
-   curl -s -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders \
-     | python3 -c 'import json,sys;print("alice orders:",[o["id"] for o in json.load(sys.stdin)])'
+   A=http://api.lab.localhost:18080
+   TOKEN=$(curl -s $A/authorizationserver/oauth/token \
+     -d 'grant_type=password&client_id=storefront&username=alice&password=password' \
+     | python3 -c 'import json,sys;print(json.load(sys.stdin)["access_token"])')
+   O() { curl -s -H "Authorization: Bearer $TOKEN" $A/occ/v2/samplestore/users/current/orders \
+     | python3 -c 'import json,sys;print("alice orders:",[o["code"] for o in json.load(sys.stdin).get("orders",[])])'; }
+   O
    ```
 
 2. **バックアップを取る**。時刻を控えておきます。
@@ -52,16 +61,15 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 
    ```bash
    docker compose exec -T db psql -U store -d store \
-     -c "INSERT INTO orders (user_id, status, total, created_at) VALUES (1, '準備中', 770, now()) RETURNING id, total, created_at;"
-   curl -s -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders \
-     | python3 -c 'import json,sys;print("alice orders:",[o["id"] for o in json.load(sys.stdin)])'
+     -c "INSERT INTO orders (code, user_id, status, total, placed) VALUES ('00001009', 1, 'PROCESSING', 770, now()) RETURNING code, total, placed;"
+   O
    ```
 
 4. **事故を起こす**。条件(`WHERE`)を付け忘れた削除です。時刻を控えます。**ここからストップウォッチを始めます**。
 
    ```bash
    date +%T; docker compose exec -T db psql -U store -d store -c "DELETE FROM orders;"
-   curl -s -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders; echo
+   curl -s -H "Authorization: Bearer $TOKEN" $A/occ/v2/samplestore/users/current/orders; echo
    ```
 
 5. **戻す**。いちばん新しいバックアップが使われます。`time` で機械の作業時間も測ります。
@@ -73,9 +81,8 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 6. **戻ったことを確かめる**。確かめ終わった時刻で **ストップウォッチを止めます**。
 
    ```bash
-   curl -s -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders \
-     | python3 -c 'import json,sys;print("alice orders:",[o["id"] for o in json.load(sys.stdin)])'
-   docker compose exec -T db psql -U store -d store -c 'select count(*) from orders' -c 'select id from orders where id=9'
+   O
+   docker compose exec -T db psql -U store -d store -c 'select count(*) from orders' -c "select code from orders where code='00001009'"
    date +%T
    ```
 
@@ -83,47 +90,47 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 
 ## 4. 何が見えたら成功か
 
-**手順 2**: バックアップのファイルができます(約 12KB)。
+**手順 2**: バックアップのファイルができます(見本データが入っているので約 44KB)。
 
 ```text
-01:17:47
-バックアップを取りました: backups/store-20260926-011747.sql (11842 バイト)
+11:16:32
+バックアップを取りました: backups/store-20260926-111632.sql (44198 バイト)
 ```
 
-**手順 3**: バックアップの後に入った注文は 9 番。alice の注文は 4 件になります。
+**手順 3**: バックアップの後に入った注文は `00001009`。alice の注文は 4 件になります。
 
 ```text
- id | total |          created_at
-----+-------+------------------------------
-  9 |   770 | 2026-09-25 16:17:47.97427+00
-alice orders: [9, 3, 2, 1]
+   code   | total |            placed
+----------+-------+-------------------------------
+ 00001009 |   770 | 2026-09-26 02:16:32.574062+00
+alice orders: ['00001009', '00001003', '00001002', '00001001']
 ```
 
-**手順 4**: 9 件すべてが消え、alice の注文履歴は空になります。
+**手順 4**: 全件が消え、alice の注文履歴は空になります。
 
 ```text
-01:17:48
+11:16:32
 DELETE 9
-[]
+{"orders":[],"pagination":{...,"totalResults":0}}
 ```
 
 **手順 5**: 機械の作業(復元)は 1 秒かかりません。
 
 ```text
-復元します: backups/store-20260926-011747.sql
+復元します: backups/store-20260926-111632.sql
 復元しました。
-tools/restore.sh  0.07s user 0.04s system 17% cpu 0.648 total
+tools/restore.sh  0.05s user 0.02s system 52% cpu 0.144 total
 ```
 
-**手順 6**: 注文は戻りましたが、**9 番は戻りません**。バックアップの後に入ったからです。
+**手順 6**: 注文は戻りましたが、**`00001009` は戻りません**。バックアップの後に入ったからです。
 
 ```text
-alice orders: [3, 2, 1]
+alice orders: ['00001003', '00001002', '00001001']
  count
 -------
      8
- id
-----
+ code
+------
 (0 rows)
 ```
 
@@ -131,49 +138,47 @@ alice orders: [3, 2, 1]
 
 | 項目 | 値 | 意味 |
 | --- | --- | --- |
-| 最後のバックアップ | 01:17:47 | ここまでは戻せる |
-| 事故 | 01:17:48 | 注文を全部消した |
-| 失ったデータ(RPO の実績) | 注文 1 件(9 番、770 円) | バックアップから事故までの 1 秒の間に入った物 |
-| 機械の復元時間 | 0.65 秒 | `time tools/restore.sh` |
+| 最後のバックアップ | 11:16:32 | ここまでは戻せる |
+| 事故 | 11:16:32 | 注文を全部消した |
+| 失ったデータ(RPO の実績) | 注文 1 件(`00001009`、770 円) | バックアップから事故までの間に入った物 |
+| 機械の復元時間 | 0.14 秒 | `time tools/restore.sh` |
 | 戻るまでの時間(RTO の実績) | 事故の時刻から、手順 6 で確かめ終わった時刻まで | 自分のストップウォッチの値を書く |
 
 この演習ではすぐ隣にコマンドがあるので数十秒で戻せますが、本番の RTO には **気づくまで・判断するまで・手順書を探すまで・戻したデータが正しいか確かめるまで** の時間が全部入ります。
-機械の 0.65 秒は、RTO のごく一部にすぎません。一方 RPO は、**バックアップの間隔でほぼ決まります**(1 日 1 回なら、最悪 1 日ぶんの注文を失う)。
+機械の 0.14 秒は、RTO のごく一部にすぎません。一方 RPO は、**バックアップの間隔でほぼ決まります**(1 日 1 回なら、最悪 1 日ぶんの注文を失う)。
 
 ## 5. ここで覚える言葉
 
 | 言葉 | 一言でいうと | たとえ | この演習で見たもの |
 | --- | --- | --- | --- |
-| DR(災害からの復旧) | 大きな事故や災害から、サービスを戻すこと | 火事のあとの営業再開 | 消えた注文を戻した |
-| バックアップ | ある時点のデータの写し | ゲームのセーブ | `backups/store-20260926-011747.sql` |
-| 復元(リストア) | 写しからデータを戻すこと | セーブデータを読み込む | `tools/restore.sh` |
-| RTO(目標復旧時間) | 止まってから戻るまでに許される時間 | やり直して元の場面に戻るまでの時間 | 事故から確かめ終わるまで |
-| RPO(目標復旧時点) | どの時点まで戻れればよいか = 失ってよいデータの幅 | 最後のセーブ以降の進みは消える | 注文 9 番が戻らなかった |
-| 復元の訓練 | 本当に戻せるかを定期的に試すこと | 避難訓練 | この演習そのもの |
+| [バックアップ](/guide/glossary#backup) | 中身を丸ごと別に取っておく | ゲームのセーブ | `tools/backup.sh`(pg_dump) |
+| [リストア(復元)](/guide/glossary#restore) | バックアップから元に戻す | セーブから再開 | `tools/restore.sh`(psql) |
+| [RTO](/guide/glossary#rto) | 戻すのにかかる時間の目標 | 再開までにかかる時間 | 事故からの実測時間 |
+| [RPO](/guide/glossary#rpo) | どこまで戻せるか(失うデータの量)の目標 | どのセーブ地点まで戻るか | 失った注文 1 件 |
+| 復元の訓練 | 実際に戻してみて、戻せることを確かめる | セーブが本当に読めるか試す | この演習そのもの |
+| 間隔 | どれくらいの頻度でバックアップを取るか | 何分ごとにセーブするか | RPO は間隔でほぼ決まる |
 
 ## 6. 設計書ではここに書く
 
-- **[DR 方式 4.1 守る物を決める](/design/architecture/09-disaster-recovery#s4-1)**: 何を守るか(注文・会員は必須、指標やログは失ってよい、など)。
-- **[DR 方式 4.2 バックアップ](/design/architecture/09-disaster-recovery#s4-2)**: いつ・どれくらいの間隔で・どこに(別の場所に)・何世代残すか。**失敗したら誰に通知が行くか**。バックアップには会員の情報が入るので、置き場所の権限と暗号化も。
-- **[DR 方式 4.3 復元](/design/architecture/09-disaster-recovery#s4-3)・[4.5 訓練](/design/architecture/09-disaster-recovery#s4-5)**: 戻す手順、戻した後の確かめ方、訓練の頻度(例: 四半期に 1 回)。
-- **[DR 方式 4.4 RTO と RPO を測る](/design/architecture/09-disaster-recovery#s4-4)・[5 目標](/design/architecture/09-disaster-recovery#s5)**: 発注元と合意した RTO・RPO の数字と、訓練で測った実績。
-- **[D-DR-02 バックアップと復元](/design/detail/D-DR-02-backup-restore)**(一般のカタログでは D-DR-02): [4.1 バックアップのオプション](/design/detail/D-DR-02-backup-restore#s4-1)(`--clean` など)、[4.2 復元のオプション](/design/detail/D-DR-02-backup-restore#s4-2)(`ON_ERROR_STOP`、`--single-transaction`)、[4.3 演習の手順と記録](/design/detail/D-DR-02-backup-restore#s4-3)(この演習の表)。訓練の記録は一般のカタログでは D-DR-06 の形で残します。
+- **[DR 方式 4.1 守る物を決める](/design/architecture/09-disaster-recovery#s4-1)・[4.2 バックアップ](/design/architecture/09-disaster-recovery#s4-2)・[4.3 復元](/design/architecture/09-disaster-recovery#s4-3)**: 守る物(DB `store`)、取り方、間隔、置き場所、戻す手順。
+- **[DR 方式 4.4 RTO と RPO を測る](/design/architecture/09-disaster-recovery#s4-4)・[4.5 訓練](/design/architecture/09-disaster-recovery#s4-5)**: 目標値と、訓練で測った実績。
+- **[D-DR-02 4.3 演習の手順と記録](/design/detail/D-DR-02-backup-restore#s4-3)・[4.4 守る物と守らない物](/design/detail/D-DR-02-backup-restore#s4-4)**: 記録の形、戻す物と戻さない物(作り直せる物は戻さない)。
 
 ## 7. レビューで聞く質問
 
-- 「RTO と RPO の数字は、発注元(業務の担当)と合意したものですか。」
-- 「バックアップの間隔で、RPO の目標を満たせますか(1 日 1 回なら最悪 1 日ぶんを失います)。」
-- 「最後に本番のバックアップから実際に戻してみたのはいつですか。そのとき何分かかりましたか。」
-- 「バックアップが失敗したら、誰がどうやって気づきますか。」
-- 「バックアップは、元の DB と同じ場所(同じサーバー・同じ建物)に置いていませんか。見られる人は限られていますか。」
-- 「戻した後、データが正しいことを何で確かめますか(件数、最後の注文の番号など)。」
+- 「守るデータは何ですか。それはどれくらいの間隔でバックアップしていますか。」
+- 「そのバックアップから、実際に戻す訓練をしたことがありますか。何分かかりましたか。」
+- 「RTO(戻すまでの時間)と RPO(失うデータ)の目標はいくつですか。実測はいくつでしたか。」
+- 「RTO には、気づく・判断する・手順を探す・確かめる時間まで含めていますか。」
+- 「バックアップの後に入ったデータ(RPO ぶん)は、どう扱いますか。二重に取る仕組みはありますか。」
 
 ## 8. 片付け
 
-戻したので、DB は見本のデータ(注文 8 件)の状態です。バックアップのファイルには会員の情報(パスワードの控え)が入っているので、演習が終わったら消しておきます(`backups/` はリポジトリに入らないようにしてありますが、念のため)。
+DB は元の見本データに戻っています。バックアップのファイルは手元にだけ残ります(`.gitignore` に入っているのでリポジトリには入りません)。
 
 ```bash
-docker compose exec -T db psql -U store -d store -c 'select count(*) from orders'   # 8 ならよい
-rm -rf backups
-unset TOKEN
+ls backups/                 # 取ったファイルが見える
+unset TOKEN A
 ```
+
+演習で取ったバックアップを消したいときは `rm backups/store-*.sql`、DB をまっさらにしたいときは `docker compose down -v` です。

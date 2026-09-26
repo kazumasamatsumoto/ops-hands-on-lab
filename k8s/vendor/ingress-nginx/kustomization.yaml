@@ -1,0 +1,41 @@
+# ingress-nginx(クラスタの入口の振り分け係)を入れるための目次です。k8s/up.sh が kubectl apply -k k8s/vendor/ingress-nginx で反映します。
+#
+# ■ 何をしているか
+#   ingress-nginx は、Ingress リソース(k8s/generated/base/ingress.yaml。manifest.json の endpoints から作る)を読んで、
+#   中の nginx の設定を自動で書き換えるソフトです。CCv2 の Cloud Portal で「エンドポイント」と「IP フィルタ」を設定すると、
+#   裏で入口の振り分けが変わるのと同じ考え方です。
+#
+# ■ 本体は同じフォルダの deploy-kind-v1.15.1.yaml(この kustomization.yaml はラボで足した設定だけ)
+#   ingress-nginx の公式リポジトリが kind 用に配っている定義ファイル(controller-v1.15.1)を、そのまま写して置いています(vendoring)。
+#   ネットから毎回取らないので、いつ誰が起動しても同じ物が入ります。コントローラーは kind のノードの 80 番(hostPort)で待ち受けます。
+#   取り直し方: curl -fsSL https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.15.1/deploy/static/provider/kind/deploy.yaml
+#
+# ■ 注意: ingress-nginx は開発が終わっています(2026 年 3 月で保守終了。以後は修正が出ません)
+#   このラボでは「Ingress の注釈で IP フィルタ・回数制限を書く」形が分かりやすいので学習用に使います。
+#   新しく本番を作るなら、Gateway API に対応したコントローラーを選びます(k8s/README.md の注意も読んでください)。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - deploy-kind-v1.15.1.yaml
+patches:
+  # ingress-nginx 全体の設定(ConfigMap ingress-nginx-controller)。公式の定義では中身が空なので、ここで足します。
+  - patch: |-
+      apiVersion: v1
+      kind: ConfigMap
+      metadata:
+        name: ingress-nginx-controller
+        namespace: ingress-nginx
+      data:
+        # 利用者の本当の IP を X-Forwarded-For から知ります。ingress-nginx に直接つないでくるのは cdn-waf なので、
+        # そのままでは「利用者の IP = cdn-waf の IP」になってしまい、IP フィルタも回数制限も効きません。
+        use-forwarded-headers: "true"
+        # ただし X-Forwarded-For は誰でも偽れるので、「lab-kind のネットワーク(cdn-waf がいる所)から来たときだけ」信じます。
+        # 本物の CDN でも、CDN が公開している IP の範囲だけを信じる、という設定をします。
+        proxy-real-ip-cidr: "172.30.91.0/24"
+        # 回数制限を超えたときの番号。ingress-nginx の既定は 503 ですが、軽量版と同じ 429(多すぎます)にします。
+        limit-req-status-code: "429"
+        # IP フィルタで断ったときも、軽量版と同じ 403 です(既定のまま。書いておくだけ)。
+        # アクセスログを 1 行 1 JSON にします(Loki で探しやすくするため)。remote_addr は X-Forwarded-For から直した「利用者の IP」です。
+        # request_id($req_id)は cdn-waf が付けた X-Request-Id(無ければ ingress-nginx が作る番号)。軽量版の ingress のログと同じ項目名です。
+        log-format-escape-json: "true"
+        log-format-upstream: '{"time":"$time_iso8601","service":"ingress","host":"$host","remote_addr":"$remote_addr","request_id":"$req_id","via":"$realip_remote_addr","method":"$request_method","uri":"$request_uri","status":$status,"request_time":$request_time,"upstream":"$upstream_addr","upstream_status":"$upstream_status","ingress":"$ingress_name"}'

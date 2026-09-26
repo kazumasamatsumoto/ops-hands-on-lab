@@ -1,19 +1,27 @@
 /**
- * サンプルストア web の Express サーバー。
+ * サンプルストア storefront の Express サーバー(CCv2 の JS Storefront の SSR サーバーに当たります)。
  *
- * 役目は 3 つです。
- *   1. JS・CSS・画像などのファイルを配る
+ * 役目は 4 つです。
+ *   1. JS・CSS などのファイルを配る
  *   2. 画面の HTML を作る(SSR = サーバーで描画 / CSR = 空の HTML を返してブラウザで描画)
- *   3. 運用のための口を出す(/healthz = 生きているか、/metrics = 指標)
+ *   3. ブラウザに「api の外向きの住所」を教える(HTML の <meta name="api-public-url">)
+ *   4. 運用のための口を出す(/healthz = 生きているか、/metrics = 指標、JSON のログ、トレース)
  *
  * 環境変数(スイッチ)
  *   PORT              待ち受けるポート(既定 4000)
  *   RENDER_MODE       ssr | csr(既定 ssr)。csr にすると、どの画面もサーバーでは描画せず空の HTML を返します
  *   SSR_TIMEOUT_MS    SSR をあきらめるまでの時間(既定 3000)。超えたら空の HTML を返します(フォールバック)
  *   SSR_WINDOW_BUG    true でわざと SSR を壊します(サーバーで window を触るコードが動き 500 になる)
- *   API_INTERNAL_URL  サーバーから見た api の住所(既定 http://api:3001)
+ *   API_INTERNAL_URL  サーバー(SSR 中)から見た api の住所(既定 http://api:3001)
+ *   API_PUBLIC_URL    ブラウザから見た api の住所(既定 http://api.lab.localhost:18080)。画像の URL にも使います
  *   NG_ALLOWED_HOSTS  Host ヘッダとして受け付ける名前を足す(カンマ区切り。Angular の機能)
+ *   OTEL_EXPORTER_OTLP_ENDPOINT  あるときだけトレースを送る(例: http://otel-collector:4318)
  */
+// トレースの準備は、ほかより先に済ませます(server/otel.ts)
+import { OTEL_ENABLED, SpanKind, SpanStatusCode, context, propagation, shutdownTracing, trace, tracer } from './server/otel';
+import type { Context } from '@opentelemetry/api';
+import { log } from './server/log';
+import type { SsrRequestContext } from './server/app-hooks';
 import { AngularNodeAppEngine, createNodeRequestHandler, isMainModule } from '@angular/ssr/node';
 import express, { NextFunction, Request, Response } from 'express';
 import { readFileSync } from 'node:fs';
@@ -26,6 +34,7 @@ import client from 'prom-client';
 const RENDER_MODE: 'ssr' | 'csr' = (process.env['RENDER_MODE'] ?? 'ssr').toLowerCase() === 'csr' ? 'csr' : 'ssr';
 const SSR_TIMEOUT_MS = Number(process.env['SSR_TIMEOUT_MS']) > 0 ? Number(process.env['SSR_TIMEOUT_MS']) : 3000;
 const API_INTERNAL_URL = (process.env['API_INTERNAL_URL'] || 'http://api:3001').replace(/\/$/, '');
+const API_PUBLIC_URL = (process.env['API_PUBLIC_URL'] || 'http://api.lab.localhost:18080').replace(/\/$/, '');
 const SSR_WINDOW_BUG = process.env['SSR_WINDOW_BUG'] === 'true';
 
 const browserDistFolder = join(import.meta.dirname, '../browser');
@@ -40,16 +49,19 @@ function csrShellTemplate(): string {
   return csrShellCache;
 }
 
-/** <html> に「誰が描画したか」の印を付けます。画面の下の「描画モード」表示はこれを読みます */
-function markRenderMode(html: string, mode: 'ssr' | 'csr' | 'fallback'): string {
-  return html.replace(/<html\b/i, `<html data-render-mode="${mode}"`);
+function escapeAttr(value: string): string {
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
 }
 
-// ---------------------------------------------------------------------------
-// ログ(1 行 = 1 つの JSON。Loki などで項目ごとに絞り込めます)
-// ---------------------------------------------------------------------------
-function log(fields: Record<string, unknown>): void {
-  process.stdout.write(JSON.stringify({ time: new Date().toISOString(), service: 'web', ...fields }) + '\n');
+/**
+ * 返す HTML に 2 つの印を書き足します(SSR・CSR・フォールバックのどれでも同じ)。
+ *   1. <html data-render-mode="ssr|csr|fallback"> … 誰が描画したか。画面の下の「描画モード」表示はこれを読みます
+ *   2. <meta name="api-public-url" content="…">   … ブラウザが api を呼ぶときの住所(core/tokens.ts が読みます)
+ *      JS のファイルに焼き込まず、HTML を返すたびに環境変数から入れるので、同じイメージを d1・s1・p1 で使えます。
+ */
+function decorateHtml(html: string, mode: 'ssr' | 'csr' | 'fallback'): string {
+  const meta = `<meta name="api-public-url" content="${escapeAttr(API_PUBLIC_URL)}">`;
+  return html.replace(/<html\b/i, `<html data-render-mode="${mode}"`).replace(/<head>/i, `<head>\n  ${meta}`);
 }
 
 // ---------------------------------------------------------------------------
@@ -73,27 +85,26 @@ const ssrErrorsTotal = new client.Counter({
 });
 const httpRequestsTotal = new client.Counter({
   name: 'http_requests_total',
-  help: 'web が受けたリクエストの数',
+  help: 'storefront が受けたリクエストの数',
   labelNames: ['route', 'method', 'status'],
 });
 const httpRequestDuration = new client.Histogram({
   name: 'http_request_duration_seconds',
-  help: 'web がリクエストに応えるまでの時間(秒)',
+  help: 'storefront がリクエストに応えるまでの時間(秒)',
   labelNames: ['route', 'method'],
   buckets: [0.01, 0.05, 0.1, 0.25, 0.5, 1, 2, 3, 5, 10],
 });
 
 /**
- * URL を「画面の種類」にまとめます(/products/1 と /products/2 を同じ /products/:id として数える)。
+ * URL を「画面の種類」にまとめます(/p/100001 と /p/100002 を同じ /p/:code として数える)。
  * URL をそのままラベルにすると種類が増えすぎて Prometheus が重くなるためです。
  */
 function routeOf(path: string): string {
-  if (path === '/') return '/';
-  if (path === '/products' || path === '/login' || path === '/me/orders') return path;
-  if (/^\/products\/[^/]+$/.test(path)) return '/products/:id';
-  if (/^\/me\/orders\/[^/]+$/.test(path)) return '/me/orders/:orderId';
+  if (path === '/' || path === '/search' || path === '/login' || path === '/my-account/orders') return path;
+  if (/^\/p\/[^/]+\/?$/.test(path)) return '/p/:code';
+  if (/^\/c\/[^/]+\/?$/.test(path)) return '/c/:code';
+  if (/^\/my-account\/orders\/[^/]+$/.test(path)) return '/my-account/orders/:code';
   if (path === '/metrics' || path === '/healthz') return path;
-  if (path.startsWith('/api/')) return '/api/*';
   if (/\.[a-z0-9]+$/i.test(path)) return 'static';
   return 'other';
 }
@@ -104,18 +115,46 @@ function routeOf(path: string): string {
 const app = express();
 app.disable('x-powered-by'); // 使っている製品名をわざわざ教えない
 const angularApp = new AngularNodeAppEngine({
-  // edge(nginx)が付ける X-Forwarded-* ヘッダを信じます。これを設定しないと Angular が安全のため CSR に切り替えます
-  trustProxyHeaders: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto'],
+  // 前段(cdn-waf・ingress の nginx)が付ける X-Forwarded-* ヘッダを信じます。これを設定しないと Angular が安全のため CSR に切り替えます
+  // x-forwarded-scheme は本格版の ingress-nginx が付けるヘッダです(中身は x-forwarded-proto と同じ http / https)。
+  // ここに無いと、本格版だけ SSR されずに空の HTML(CSR)になります。
+  trustProxyHeaders: ['x-forwarded-for', 'x-forwarded-host', 'x-forwarded-port', 'x-forwarded-proto', 'x-forwarded-scheme'],
 });
 
-// リクエストごとに 1 行ログを出し、指標を数えます
+// リクエストごとに、トレースの区間を作り(OTEL が有効なとき)、1 行ログを出し、指標を数えます
 app.use((req: Request, res: Response, next: NextFunction) => {
   const start = process.hrtime.bigint();
+  const route = routeOf(req.path);
+
+  // 【トレース】画面のリクエストだけ区間(span)を作ります(JS・CSS や /metrics は数が多いので作りません)。
+  // 前の段(ingress など)が traceparent ヘッダを付けてきたら、その続きとしてつなげます(propagation.extract)。
+  let span: ReturnType<typeof tracer.startSpan> | undefined;
+  let spanCtx: Context | undefined;
+  if (OTEL_ENABLED && route !== 'static' && route !== '/metrics' && route !== '/healthz') {
+    const parent = propagation.extract(context.active(), req.headers);
+    span = tracer.startSpan(
+      `${req.method} ${route}`,
+      {
+        kind: SpanKind.SERVER,
+        attributes: { 'http.request.method': req.method, 'http.route': route, 'url.path': req.path },
+      },
+      parent,
+    );
+    spanCtx = trace.setSpan(parent, span);
+    res.locals['otelContext'] = spanCtx;
+    res.locals['traceId'] = span.spanContext().traceId;
+  }
+
   res.on('finish', () => {
     const durationMs = Number(process.hrtime.bigint() - start) / 1e6;
-    const route = routeOf(req.path);
     httpRequestsTotal.inc({ route, method: req.method, status: String(res.statusCode) });
     httpRequestDuration.observe({ route, method: req.method }, durationMs / 1000);
+    if (span) {
+      span.setAttribute('http.response.status_code', res.statusCode);
+      span.setAttribute('ssr.render_mode', String(res.locals['renderMode'] ?? 'none'));
+      if (res.statusCode >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
+      span.end();
+    }
     // /metrics と /healthz は数秒ごとに機械が呼ぶので、ログが埋もれないよう出しません
     if (route === '/metrics' || route === '/healthz') return;
     log({
@@ -128,9 +167,12 @@ app.use((req: Request, res: Response, next: NextFunction) => {
       durationMs: Math.round(durationMs * 10) / 10,
       renderMode: res.locals['renderMode'] ?? 'none',
       fallback: res.locals['fallback'] === true,
+      trace_id: res.locals['traceId'],
+      reqId: req.get('x-request-id'), // cdn-waf が付けたリクエスト番号(cdn-waf・ingress のログの request_id と同じ値)
     });
   });
-  next();
+  if (spanCtx) context.with(spanCtx, next);
+  else next();
 });
 
 app.get('/healthz', (_req, res) => {
@@ -142,35 +184,7 @@ app.get('/metrics', async (_req, res) => {
   res.send(await client.register.metrics());
 });
 
-/**
- * /api/* の予備の中継。
- * ふだんは edge(nginx)が /api を api へ振り分けるので、ここには来ません。
- * edge を通さずに web(4000 番)を直接開いた演習のときだけ、ブラウザの /api 呼び出しを api へ渡します。
- */
-app.use('/api', express.raw({ type: '*/*', limit: '1mb' }), async (req: Request, res: Response) => {
-  res.locals['renderMode'] = 'proxy';
-  const headers: Record<string, string> = {};
-  for (const name of ['content-type', 'authorization', 'accept']) {
-    const value = req.headers[name];
-    if (typeof value === 'string') headers[name] = value;
-  }
-  try {
-    const upstream = await fetch(API_INTERNAL_URL + req.originalUrl, {
-      method: req.method,
-      headers,
-      body: req.method === 'GET' || req.method === 'HEAD' ? undefined : Buffer.isBuffer(req.body) && req.body.length > 0 ? new Uint8Array(req.body) : undefined,
-      signal: AbortSignal.timeout(10_000),
-    });
-    res.status(upstream.status);
-    const type = upstream.headers.get('content-type');
-    if (type) res.set('Content-Type', type);
-    res.send(Buffer.from(await upstream.arrayBuffer()));
-  } catch {
-    res.status(502).json({ error: 'api に届きませんでした' });
-  }
-});
-
-// JS・CSS・画像などのファイル。名前に内容のハッシュが入っているので 1 年キャッシュしてよい
+// JS・CSS などのファイル。名前に内容のハッシュが入っているので 1 年キャッシュしてよい
 app.use(
   express.static(browserDistFolder, {
     maxAge: '1y',
@@ -185,8 +199,8 @@ function sendCsrShell(res: Response, mode: 'csr' | 'fallback'): void {
   res.locals['fallback'] = mode === 'fallback';
   res.set('Content-Type', 'text/html; charset=utf-8');
   res.set('X-Render-Mode', mode);
-  res.set('Cache-Control', 'no-store'); // 時間切れの空の HTML を edge にキャッシュさせない
-  res.status(200).send(markRenderMode(csrShellTemplate(), mode));
+  res.set('Cache-Control', 'no-store'); // 時間切れの空の HTML を cdn-waf にキャッシュさせない
+  res.status(200).send(decorateHtml(csrShellTemplate(), mode));
 }
 
 const TIMEOUT = Symbol('timeout');
@@ -202,10 +216,18 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
 
   const route = routeOf(req.path);
   const endTimer = ssrRenderDuration.startTimer({ route });
+  // 【トレース】「Angular が HTML を作っていた時間」の区間。SSR 中の api 呼び出しは、この区間の子になります
+  const parentCtx = res.locals['otelContext'] as Context | undefined;
+  const renderSpan = parentCtx ? tracer.startSpan('ssr.render', { attributes: { 'http.route': route } }, parentCtx) : undefined;
+  // Angular への申し送り(REQUEST_CONTEXT)。app.config.server.ts → server/app-hooks.ts が受け取ります
+  const requestContext: SsrRequestContext = {
+    otelContext: renderSpan && parentCtx ? trace.setSpan(parentCtx, renderSpan) : undefined,
+    traceId: res.locals['traceId'],
+  };
   let timer: NodeJS.Timeout | undefined;
   try {
     // SSR 本体。API の返事を待つので、API が遅いとここも遅くなります
-    const render = angularApp.handle(req).then(async (response) => {
+    const render = angularApp.handle(req, requestContext).then(async (response) => {
       if (!response) return null;
       return { status: response.status, headers: response.headers, html: await response.text() };
     });
@@ -218,12 +240,15 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       // 時間切れ: SSR はあきらめて空の HTML を返す。画面はブラウザが作る(利用者には少し遅く見えるが、真っ白にはならない)
       endTimer();
       ssrFallbackTotal.inc();
-      log({ level: 'warn', event: 'ssr_fallback', url: req.originalUrl, route, timeoutMs: SSR_TIMEOUT_MS });
+      renderSpan?.setAttribute('ssr.fallback', true);
+      renderSpan?.end();
+      log({ level: 'warn', event: 'ssr_fallback', url: req.originalUrl, route, timeoutMs: SSR_TIMEOUT_MS, trace_id: res.locals['traceId'] });
       render.catch(() => undefined); // あとから失敗しても、もう返事は済んでいるので無視します
       sendCsrShell(res, 'fallback');
       return;
     }
     endTimer();
+    renderSpan?.end();
     if (!result) return next();
 
     res.locals['renderMode'] = 'ssr';
@@ -232,13 +257,18 @@ app.use(async (req: Request, res: Response, next: NextFunction) => {
       if (key !== 'content-length') res.setHeader(key, value);
     });
     res.set('X-Render-Mode', 'ssr');
-    res.status(result.status).send(markRenderMode(result.html, 'ssr'));
+    res.status(result.status).send(decorateHtml(result.html, 'ssr'));
   } catch (err) {
     // SSR の途中で例外(たとえば SSR_WINDOW_BUG=true で「window is not defined」)
     endTimer();
     ssrErrorsTotal.inc();
     const message = err instanceof Error ? err.message : String(err);
-    log({ level: 'error', event: 'ssr_error', url: req.originalUrl, route, error: message });
+    if (renderSpan) {
+      renderSpan.recordException(err instanceof Error ? err : new Error(message));
+      renderSpan.setStatus({ code: SpanStatusCode.ERROR, message });
+      renderSpan.end();
+    }
+    log({ level: 'error', event: 'ssr_error', url: req.originalUrl, route, error: message, trace_id: res.locals['traceId'] });
     res.locals['renderMode'] = 'ssr';
     res.locals['fallback'] = false;
     res
@@ -261,12 +291,14 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
     if (error) throw error;
     log({
       level: 'info',
-      msg: 'web started',
+      msg: 'storefront started',
       port,
       renderMode: RENDER_MODE,
       ssrTimeoutMs: SSR_TIMEOUT_MS,
       ssrWindowBug: SSR_WINDOW_BUG,
       apiInternalUrl: API_INTERNAL_URL,
+      apiPublicUrl: API_PUBLIC_URL,
+      otel: OTEL_ENABLED,
     });
   });
 
@@ -274,7 +306,8 @@ if (isMainModule(import.meta.url) || process.env['pm_id']) {
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
     process.on(signal, () => {
       log({ level: 'info', msg: `received ${signal}, shutting down` });
-      server.close(() => process.exit(0));
+      // 送り残したトレースを送ってから止まります
+      server.close(() => void shutdownTracing().finally(() => process.exit(0)));
       setTimeout(() => process.exit(0), 10_000).unref();
     });
   }

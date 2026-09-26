@@ -5,187 +5,276 @@ title: インフラ-2 設定値とシークレットを環境で分ける
 # インフラ-2 設定値とシークレットを環境で分ける
 
 ::: info この演習について
-- 所要時間: 約 15 分
-- 使うもの: 軽量版(docker compose)。`curl`、`openssl`(Mac・Linux には最初から入っています)
+- 所要時間: 約 20 分
+- 使うもの: 軽量版(docker compose)。Node.js 24(`tools/manifest/render.mjs` を動かす)、`kubectl`(クラスタは要りません。YAML を組み立てて見るだけ)
+- 仕組みはこちら: [仕組み-12 manifest と環境(d1・s1・p1)](/how-it-works/12-manifest-and-environments)・[仕組み-8 aspect と worker](/how-it-works/08-aspects-and-worker)
 - 関係する設計書: [インフラ方式](/design/architecture/03-infrastructure)・[D-INF-01 起動構成(compose と Kubernetes)](/design/detail/D-INF-01-compose-and-k8s)・[セキュリティ方式](/design/architecture/10-security)
+- 用語集: [環境変数](/guide/glossary#env-var)・[Secret](/guide/glossary#secret)・[ConfigMap](/guide/glossary#configmap)・[manifest.json](/guide/glossary#manifest-json)・[d1・s1・p1](/guide/glossary#environments)・[aspect](/guide/glossary#aspect)・[kustomize](/guide/glossary#kustomize)・[オーバーレイ](/guide/glossary#overlay)
 :::
 
 ## 1. この設計書はなぜ必要か
 
-アプリは同じでも、開発・検証・本番で **変えるべき値** があります。つなぐ DB、ログの細かさ、そして **パスワードや署名の鍵(シークレット)** です。
+アプリは同じでも、開発・検証・本番で **変えるべき値** があります。台数、キャッシュの有無、ログの細かさ、誰が入ってよいか、そして **パスワードなどの秘密の値(シークレット)** です。
 これをプログラムの中や、みんなが見るリポジトリに書いてしまうと、取り返しがつきません。
 
-> **よくある事故**: 検証環境で動作確認をするため、担当者が設定ファイルに本番の DB のパスワードを書き、そのままリポジトリに入れました。
+> **よくある事故 1**: 検証環境で動作確認をするため、担当者が設定ファイルに本番の DB のパスワードを書き、そのままリポジトリに入れました。
 > リポジトリは協力会社にも公開されていて、半年後の監査で見つかりました。パスワードを変えるには本番を止める必要があり、休日に緊急作業になりました。
-> 別の会社では、検証環境と本番で同じ署名の鍵を使っていたため、検証環境で作ったログインの札(トークン)で本番に入れてしまいました。
+>
+> **よくある事故 2**: 本番だけ台数を 2 台にする設定を、担当者が本番の画面から手で変えていました。次のデプロイで設計図(manifest)の値 1 台に戻り、
+> セールの初日に 1 台でさばくことになってお店が落ちました。「どこに書いた値が本物か」が決まっていなかったのです。
 
-どの値を環境ごとに変えるか、秘密の値をどこに置き、誰が見られるか。これをインフラの方式設計書で決めます。
+どの値を環境ごとに変えるか、どこに書くか(1 か所にまとめる)、秘密の値をどこに置き、誰が見られるか。これをインフラの方式設計書で決めます。
 
 ## 2. 何をやっているのか
 
-サンプルストアの設定は、すべて **環境変数**(プログラムの外から渡す設定値)で渡しています。値は `docker-compose.yml` に書いてあり、`${JWT_SECRET:-既定値}` のように **外から上書きできる** 形にしてある物もあります。
-演習では、①コンテナの中の設定値を見る、②検証環境用の「秘密のファイル」`.env.staging` を作って署名の鍵を差し替える、③鍵が変わると古いログインの札が使えなくなることを見る、④そのファイルが git に入らないことを確かめる、の順に進みます。
+サンプルストアの構成は、リポジトリ直下の **`manifest.json`** 1 つに書いてあります(CCv2 の manifest の考え方をまねた、このラボ独自の形)。
+
+| manifest.json の項目 | 中身 | できる物 |
+| --- | --- | --- |
+| `aspects[]` | api・backoffice・backgroundProcessing(worker)の台数・環境変数・秘密の値の名前 | aspect ごとの Deployment(`k8s/generated/base/*.yaml`) |
+| `endpoints[]` | www・api・backoffice のホスト名・行き先・IP フィルタ・閉じる口 | Ingress(`k8s/generated/base/ingress.yaml`) |
+| `secrets` | 秘密の値の入れ物の名前(`lab-secrets`)と鍵の名前(`PGPASSWORD`・`BACKOFFICE_PASSWORD`) | Deployment の `secretKeyRef`(値そのものは書かない) |
+| `environments.d1/s1/p1` | 環境ごとの違い(台数・キャッシュ・IP フィルタ・ログの細かさ) | 環境ごとの差分(`k8s/generated/envs/*/`) |
+
+`node tools/manifest/render.mjs` が manifest.json を読んで、本格版の Kubernetes の定義を作ります。軽量版の `docker-compose.yml` は、この manifest に手で合わせてあり、
+`render.mjs --check` で食い違いを確かめられます。
+
+演習では、①コンテナの中の設定値を見る(同じイメージが `ASPECT` で役を変えている)、②manifest を 1 行変えると何が変わるかを見る、③d1 と p1 の違いを YAML で見比べる、
+④秘密の値の置き方と「見える人には見える」ことを確かめる、の順に進みます。
 
 たとえ: **アプリは「同じ型の金庫」、設定値は「金庫を置く場所の住所」、シークレットは「金庫の暗証番号」** です。
-型(アプリ)はどの支店でも同じでよいですが、暗証番号は支店ごとに変え、設計図(リポジトリ)には書きません。
+型(アプリ)はどの支店(環境)でも同じでよいですが、暗証番号は支店ごとに変え、設計図(リポジトリ)には書きません。
+manifest.json は「全支店の設置の指示書」で、支店ごとの違い(d1・s1・p1)も同じ指示書の中に書きます。
+
+::: tip CCv2 では
+CCv2 では、リポジトリの `manifest.json` に aspect・エンドポイントなどを書き、Cloud Portal でビルドしてデプロイすると、裏で Kubernetes のリソースができます。
+環境(d1・s1・p1)ごとの違いのうち、**秘密の値や環境ごとの設定値は Cloud Portal の環境の設定(サービスのプロパティ)** に置き、リポジトリには書きません。
+このラボの `render.mjs` と `k8s/generated/envs/` は、その「裏でできるもの」を目に見える形にしたものです。
+:::
 
 ## 3. まず触ってみる
 
-1. **コンテナの中の設定値を見る**。
+1. **コンテナの中の設定値を見る**。api・backoffice・worker は同じイメージ(`lab/api:local`)で、`ASPECT` だけが違います。
 
    ```bash
-   docker compose exec -T api printenv | grep -E 'PG|JWT|CHAOS|LOG' | sort
-   docker compose exec -T web printenv | grep -E 'RENDER|SSR|API_INT'
+   for s in api backoffice worker; do
+     echo "== $s"; docker compose exec -T $s printenv | grep -E '^(ASPECT|PGHOST|PGPASSWORD|CORS|SEARCH|CRON|BACKOFFICE|LOG_LEVEL)' | sort
+   done
+   echo "== storefront"; docker compose exec -T storefront printenv | grep -E '^(RENDER|SSR|API_)' | sort
    ```
 
-2. **いまの鍵で、ログインの札を作っておく**。
+2. **manifest と compose が食い違っていないか確かめる**。
 
    ```bash
-   TOKEN=$(curl -s -X POST -H 'Content-Type: application/json' \
-     -d '{"username":"alice","password":"password"}' http://localhost:18080/api/login \
-     | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
-   curl -s -o /dev/null -w 'before: %{http_code}\n' -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders
+   node tools/manifest/render.mjs --check
    ```
 
-3. **検証環境用の秘密のファイルを作る**。鍵は人が考えずに、乱数で作ります。画面には中身を出さないようにしています。
+3. **manifest を 1 行変えて、できる物の違いを見る**。本番(p1)の api の台数を 2 → 3 にしてみます。変える前にコピーを取ります。
 
    ```bash
-   printf 'JWT_SECRET=staging-%s\n' "$(openssl rand -hex 16)" > .env.staging
-   sed 's/=.*/=(32 文字の乱数)/' .env.staging
+   cp manifest.json /tmp/manifest.json.bak
+   cp -r k8s/generated /tmp/generated.bak
+   python3 - <<'EOF'
+   import json; m = json.load(open('manifest.json'))
+   m['environments']['p1']['replicas']['api'] = 3
+   json.dump(m, open('manifest.json', 'w'), ensure_ascii=False, indent=2)
+   EOF
+   node tools/manifest/render.mjs
+   diff -r /tmp/generated.bak k8s/generated
    ```
 
-4. **その鍵で api を起動し直す**。`--env-file` で「このファイルの値を使って」と頼みます。
+   終わったら元に戻します(`render.mjs` をもう一度動かして、できる物も戻します)。
 
    ```bash
-   docker compose --env-file .env.staging up -d api
-   docker compose ps api        # (healthy) を待つ
+   cp /tmp/manifest.json.bak manifest.json && node tools/manifest/render.mjs
+   diff -r /tmp/generated.bak k8s/generated && echo 元に戻っています
    ```
 
-5. **古い札と新しい札を試す**。
+4. **食い違いを見つける仕組みを試す**。manifest の api の `CORS_ALLOWED_ORIGINS` を別の値にして `--check` を動かし、すぐ戻します。
 
    ```bash
-   curl -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" http://localhost:18080/api/me/orders
-   T2=$(curl -s -X POST -H 'Content-Type: application/json' \
-     -d '{"username":"alice","password":"password"}' http://localhost:18080/api/login \
-     | python3 -c 'import json,sys;print(json.load(sys.stdin)["token"])')
-   curl -s -o /dev/null -w 'new token: %{http_code}\n' -H "Authorization: Bearer $T2" http://localhost:18080/api/me/orders
+   sed -i.tmp 's#"CORS_ALLOWED_ORIGINS": "http://www.lab.localhost:18080"#"CORS_ALLOWED_ORIGINS": "http://shop.lab.localhost:18080"#' manifest.json && rm manifest.json.tmp
+   node tools/manifest/render.mjs --check; echo "終了コード=$?"
+   cp /tmp/manifest.json.bak manifest.json
    ```
 
-6. **秘密が git に入らないことを確かめる**(リポジトリを git で取ってきた場合)。`.gitignore` に `.env.*` が書いてあります。
+5. **環境 d1 と p1 の違いを YAML で見比べる**。`kubectl kustomize` は、クラスタが無くても「共通(base)+ 環境の差分(overlay)」を組み立てた最終の YAML を出します。
 
    ```bash
-   git check-ignore -v .env.staging docker-compose.yml
+   diff <(kubectl kustomize k8s/generated/envs/d1) <(kubectl kustomize k8s/generated/envs/p1)
+   ```
+
+6. **秘密の値の置き方を見る**。manifest には秘密の「名前」だけがあり、Deployment は `secretKeyRef`(入れ物 `lab-secrets` の鍵 `PGPASSWORD` を使う)で値を受け取ります。
+
+   ```bash
+   kubectl kustomize k8s/generated/envs/p1 | grep -B3 -A4 'secretKeyRef' | head -20
+   sed -n '1,20p' k8s/platform/secret.yaml
    ```
 
 7. **環境変数は「見える人には見える」ことを知る**。Docker を操作できる人は、コンテナの設定値をそのまま読めます。
 
    ```bash
-   docker inspect lab-api-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep JWT | cut -c1-20
+   docker inspect lab-backoffice-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep PASSWORD
+   ```
+
+8. **秘密のファイルが git に入らないことを確かめる**(リポジトリを git で取ってきた場合)。`.gitignore` に `.env.*` が書いてあります。
+
+   ```bash
+   printf 'BACKOFFICE_PASSWORD=x\n' > .env.staging
+   git check-ignore -v .env.staging manifest.json
+   rm -f .env.staging
    ```
 
 ### 本格版では
 
-本格版(kind)では、設定値は **ConfigMap**、秘密の値は **Secret** という別々の入れ物に分けています。中身と作り方は `k8s/README.md` と `k8s/` のマニフェストを見てください。
+本格版(kind)では、環境を切り替えて起動すると、manifest の `environments` の違いが実物に出ます。
 
 ```bash
-kubectl get configmap,secret -n lab          # 入れ物の一覧
-kubectl describe secret -n lab               # 中身の「名前と大きさ」だけが出て、値は出ない
+LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh
+kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
+kubectl -n lab get configmap lab-environment -o yaml       # LAB_ENV=d1・EDGE_CACHE=off
+kubectl -n lab get secret lab-secrets -o yaml              # 値は base64 で書き換えただけ。誰でも読める
+LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh                      # 戻す
 ```
 
 ## 4. 何が見えたら成功か
 
-**手順 1**: api は DB の接続先・パスワード・署名の鍵を、web は描画モードや api の住所を、環境変数で受け取っています。
+**手順 1**: 同じイメージでも `ASPECT` が違い、backoffice だけが管理画面のパスワード、worker だけが定期ジョブの間隔を持っています。storefront は描画モードと api の 2 つの住所を持っています。
 
 ```text
-CHAOS_ERROR_RATE=0
-...
-JWT_SECRET=lab-only-not-a-real-secret
+== api
+ASPECT=api
+CORS_ALLOWED_ORIGINS=http://www.lab.localhost:18080
 LOG_LEVEL=info
-PGDATABASE=store
 PGHOST=db
 PGPASSWORD=store
-PGUSER=store
-
+SEARCH_PROVIDER=db
+== backoffice
+ASPECT=backoffice
+BACKOFFICE_PASSWORD=admin
+LOG_LEVEL=info
+PGHOST=db
+PGPASSWORD=store
+SEARCH_PROVIDER=db
+== worker
+ASPECT=backgroundProcessing
+CRON_INTERVAL_SECONDS=60
+...
+== storefront
 API_INTERNAL_URL=http://api:3001
+API_PUBLIC_URL=http://api.lab.localhost:18080
+RENDER_MODE=ssr
 SSR_TIMEOUT_MS=3000
 SSR_WINDOW_BUG=false
-RENDER_MODE=ssr
 ```
 
 (ラボなので分かりやすい見本の値です。本番でこの書き方はしません。)
 
-**手順 2〜5**: 鍵を変えた瞬間に、古い鍵で作った札は使えなくなり、新しい鍵で作った札だけが通ります。
+**手順 2**: 食い違いが無ければ、この 1 行です。
 
 ```text
-before: 200
-JWT_SECRET=(32 文字の乱数)
-{"error":"unauthorized","message":"トークンが無効か、期限切れです"} 401
-new token: 200
+manifest.json と docker-compose.yml・ingress/default.conf.template は食い違っていません(軽量版の既定値で比べています)。
 ```
 
-これは「検証環境で作った札を本番に持ち込んでも使えない」ことと同じです。環境ごとに鍵を分ける意味がここにあります。
-逆に、本番で鍵を変えると **ログイン中の全員が一度ログアウトされる** ことも分かります(鍵を変える手順書に書くべきことです)。
+**手順 3**: manifest の 1 行が、環境 p1 の差分の 1 行になります。ほかのファイルは変わりません。
 
-**手順 6**: `.env.staging` は `.gitignore` の 16 行目 `.env.*` で除外されます。`docker-compose.yml` は除外されない(= 入る)ので、何も出ません。
+```text
+k8s/generated/ を作りました(base: 6 ファイル、環境: d1・s1・p1)
+diff -r /tmp/generated.bak/envs/p1/kustomization.yaml k8s/generated/envs/p1/kustomization.yaml
+12c12
+<     count: 2
+---
+>     count: 3
+```
+
+**手順 4**: 食い違いが見つかると、どこがどう違うかを書いて、終了コード 1 で終わります(CI に入れておけば、食い違ったまま出さずに済みます)。
+
+```text
+食い違いがあります:
+  - api の CORS_ALLOWED_ORIGINS: manifest は "http://shop.lab.localhost:18080"、compose は "http://www.lab.localhost:18080"
+終了コード=1
+```
+
+**手順 5**: d1 と p1 の違いは、キャッシュの ON/OFF・台数・ログの細かさ・IP フィルタ(d1 はお店も api も社内だけ)です(抜粋)。
+
+```text
+<   EDGE_CACHE: "off"
+<   LAB_ENV: d1
+---
+>   EDGE_CACHE: "on"
+>   LAB_ENV: p1
+93c93
+<   replicas: 1
+---
+>   replicas: 2
+<         - name: LOG_LEVEL
+<           value: debug
+>         - name: LOG_LEVEL
+>           value: info
+<   annotations:
+<     nginx.ingress.kubernetes.io/allowlist-source-range: 127.0.0.1/32,172.30.89.0/24,172.30.91.0/24
+```
+
+**手順 6**: Deployment には値が書かれず、入れ物と鍵の名前だけです。
+
+```text
+        - name: PGPASSWORD
+          valueFrom:
+            secretKeyRef:
+              key: PGPASSWORD
+              name: lab-secrets
+```
+
+**手順 7**: コンテナの設定値は、Docker を触れる人には丸見えです。「環境変数にしたから安全」ではありません。**誰が Docker(本番なら Kubernetes や Cloud Portal)を触れるか** が守りの本体です。
+
+```text
+BACKOFFICE_PASSWORD=admin
+PGPASSWORD=store
+```
+
+**手順 8**: `.env.staging` は `.gitignore` の 16 行目 `.env.*` で無視されます。`manifest.json` は無視されない(= リポジトリに入る)ので、秘密の値を書いてはいけません。
 
 ```text
 .gitignore:16:.env.*	.env.staging
 ```
 
-**手順 7**: Docker を操作できる人には、秘密の値が見えます。
-
-```text
-JWT_SECRET=staging-f
-```
-
-「秘密の置き場所」だけでなく「誰がその置き場所を見られるか」も決めないと、秘密は守れません。
-
-### リポジトリに入れてよい物・いけない物
-
-| 物 | 例(このラボ) | リポジトリ | 理由 |
-| --- | --- | --- | --- |
-| 環境で変わらない設定 | ポート番号、キャッシュ 30 秒 | 入れる | 皆で同じ物を使い、変更の履歴を残したい |
-| 環境で変わる設定(秘密でない) | `RENDER_MODE`、`LOG_LEVEL`、api の住所 | 入れる(環境ごとのファイルで) | 間違えたら差分で気づける |
-| シークレット | DB のパスワード、`JWT_SECRET`、外部サービスの API キー、`*.pem` | **入れない** | 一度入れると履歴から消せない |
-| 個人のデータ | `backups/` の DB のバックアップ | **入れない** | 会員の情報が入っている |
-
 ## 5. ここで覚える言葉
 
 | 言葉 | 一言でいうと | たとえ | この演習で見たもの |
 | --- | --- | --- | --- |
-| 環境変数 | プログラムの外から渡す設定値 | 家電の設定スイッチ | `printenv` で見た `PGHOST=db` など |
-| シークレット | 知られたら困る値(パスワード・鍵) | 金庫の暗証番号 | `JWT_SECRET`、`PGPASSWORD` |
-| 環境(開発・検証・本番) | 同じアプリを動かす別々の場所 | 同じ型の金庫を置く別々の支店 | `.env.staging` を作って api を起動し直した |
-| `.env` ファイル | 環境変数をまとめて書いたファイル。リポジトリに入れない | 暗証番号を書いた封筒(金庫室にしまう) | `docker compose --env-file .env.staging` |
-| `.gitignore` | git に入れないファイルの一覧 | 「持ち出し禁止」の棚の一覧 | `.gitignore:16:.env.*` |
-| 鍵の入れ替え(ローテーション) | 秘密の値を定期的・緊急時に変えること | 暗証番号の変更 | 鍵を変えたら古い札が 401 |
-| ConfigMap / Secret | Kubernetes の、設定値と秘密の値の入れ物 | 普通の書類棚と、鍵付きの書類棚 | 本格版の `kubectl get configmap,secret` |
+| [環境変数](/guide/glossary#env-var) | プログラムの外から渡す設定値 | 家電の設定スイッチ | `ASPECT=backoffice`、`RENDER_MODE=ssr` |
+| [aspect](/guide/glossary#aspect) | 同じイメージを、役割ごとに分けて動かす単位 | 同じ制服の店員を、レジ係・倉庫係に分ける | api・backoffice・backgroundProcessing |
+| [manifest.json](/guide/glossary#manifest-json) | 構成を 1 か所に書いた設計図 | 全支店の設置の指示書 | `render.mjs` が Deployment と Ingress を作る |
+| [d1・s1・p1](/guide/glossary#environments) | 開発・ステージング・本番の環境 | 試作室・リハーサル会場・本番の舞台 | d1 はキャッシュなし・1 台・社内だけ |
+| [kustomize](/guide/glossary#kustomize)・[オーバーレイ](/guide/glossary#overlay) | 共通の定義に、環境ごとの差分を重ねる書き方 | 共通の制服 + 部署ごとの名札 | `k8s/generated/envs/p1/kustomization.yaml` の `count: 3` |
+| [Secret](/guide/glossary#secret)(シークレット) | 秘密の値の入れ物 | 金庫の暗証番号 | `secretKeyRef` の `lab-secrets` |
+| [ConfigMap](/guide/glossary#configmap) | 秘密でない設定値の入れ物 | 支店の住所録 | `lab-environment`(`LAB_ENV`・`EDGE_CACHE`) |
 
 ## 6. 設計書ではここに書く
 
-- **[インフラ方式 4.5 設定値と秘密情報](/design/architecture/03-infrastructure#s4-5)**:
-  「設定はすべて環境変数で渡す」「シークレットはリポジトリに入れず、Secret(本番はクラウドの秘密の保管庫)に置く」「見られるのは運用担当の○○だけ」。
-- **[全体方式 4.2 設定は環境変数、秘密の値は別の置き場所](/design/architecture/00-overall#s4-2)**: システム全体の決まりとして 1 行。
-- **[D-INF-01 起動構成 4.5 設定と秘密](/design/detail/D-INF-01-compose-and-k8s#s4-5)**(一般のカタログでは D-INF-01): 環境変数の一覧表。**名前・意味・既定値・開発/検証/本番の値・秘密かどうか** の列を作り、秘密の行は値を書かず「Secret の○○から」と書きます。
-- **[セキュリティ方式 4.6 秘密情報とパスワード](/design/architecture/10-security#s4-6)**(一般のカタログでは D-SEC-10 秘密情報の管理): 「環境ごとに鍵を分ける」「鍵は年 1 回と、漏れた疑いがあるときに入れ替える」「入れ替えると全員がログアウトされるので、時間帯と告知を決める」。
+- **[全体方式 4.7 構成を manifest.json 1 か所に書く](/design/architecture/00-overall#s4-7)**: 「台数・環境変数・エンドポイント・IP フィルタは manifest に書く。画面で手で変えた値は次のデプロイで消える前提」。
+- **[全体方式 4.2 設定は環境変数、秘密の値は別の置き場所](/design/architecture/00-overall#s4-2)**・**[インフラ方式 4.5 設定値と秘密情報](/design/architecture/03-infrastructure#s4-5)**:
+  設定値の一覧を表にします。**名前・意味・既定値・環境ごとの値(d1 / s1 / p1)・秘密かどうか・どこに置くか**。
+- **[インフラ方式 4.7 manifest.json から Kubernetes の定義を作る](/design/architecture/03-infrastructure#s4-7)**・**[4.8 環境 d1・s1・p1](/design/architecture/03-infrastructure#s4-8)**: 環境ごとの違いの表と、その理由(d1 はキャッシュを切って変更をすぐ見る、など)。
+- **[D-INF-01 起動構成 4.5 設定と秘密](/design/detail/D-INF-01-compose-and-k8s#s4-5)**・**[4.6 manifest.json からできる物](/design/detail/D-INF-01-compose-and-k8s#s4-6)**・**[4.7 環境ごとの違い](/design/detail/D-INF-01-compose-and-k8s#s4-7)**。
+- **[セキュリティ方式 4.6 秘密情報とパスワード](/design/architecture/10-security#s4-6)**: 秘密の値を見られる人・変える手順・変える周期。
+- **[QA 方式 4.5 manifest と compose の食い違いを確かめる](/design/architecture/06-qa#s4-5)**: `render.mjs --check` を CI で動かす。
 
 ## 7. レビューで聞く質問
 
-- 「この変更で、新しく増えた設定値はありますか。環境変数の一覧表に、開発・検証・本番の値が書いてありますか。」
-- 「パスワードや鍵が、コード・設定ファイル・テストデータ・ログのどこかに書かれていませんか。」
-- 「検証環境と本番で、同じパスワードや同じ鍵を使っている所はありますか。」
-- 「その秘密の値を見られるのは誰ですか。見た記録は残りますか。」
-- 「鍵を入れ替えるとき、利用者や他のシステムに何が起きますか(全員ログアウトなど)。手順書はありますか。」
-- 「もし秘密の値をリポジトリに入れてしまったら、何をする決まりですか(値の入れ替えが先、履歴の削除は後)。」
+- 「環境ごとに変える値の一覧はありますか。d1・s1・p1 で違う値は、どれで、なぜ違いますか。」
+- 「本番の台数や IP フィルタは、どこに書いた値が本物ですか。画面で手で変えた値が次のデプロイで戻る、ということはありませんか。」
+- 「パスワードや鍵は、リポジトリ・設定ファイル・チケット・チャットのどこかに書かれていませんか。」
+- 「秘密の値を見られる人は誰ですか。Docker や Kubernetes、Cloud Portal を操作できる人は全員見られる、と分かっていますか。」
+- 「秘密の値を変える(ローテーションする)とき、どのサービスを再起動する必要がありますか。手順はありますか。」
 
 ## 8. 片付け
 
-鍵をラボの既定値に戻し、秘密のファイルを消します。
+manifest.json と `k8s/generated/` が元に戻っているか確かめます。
 
 ```bash
-docker compose up -d api                       # --env-file を付けずに起動し直す
-docker compose ps api                          # (healthy) を待つ
-docker compose exec -T api printenv JWT_SECRET # lab-only-not-a-real-secret に戻ればよい
-rm -f .env.staging
-unset TOKEN T2
+diff /tmp/manifest.json.bak manifest.json && diff -r /tmp/generated.bak k8s/generated && node tools/manifest/render.mjs --check
+rm -rf /tmp/manifest.json.bak /tmp/generated.bak
 ```
+
+本格版で `LAB_ENV=d1` を試した場合は、`LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh` で本番の形に戻します。

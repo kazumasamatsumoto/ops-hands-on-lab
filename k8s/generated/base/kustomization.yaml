@@ -1,0 +1,9 @@
+# このファイルは tools/manifest/render.mjs が manifest.json から作りました。手で直さず、manifest.json を直して作り直してください。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - api.yaml
+  - backoffice.yaml
+  - ingress.yaml
+  - storefront.yaml
+  - worker.yaml

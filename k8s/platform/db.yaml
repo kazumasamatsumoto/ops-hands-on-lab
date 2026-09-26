@@ -1,0 +1,65 @@
+# データベース(PostgreSQL)です。
+# StatefulSet = 「名前と保存場所が決まっている Pod」を作る係。DB のように、作り直しても同じデータを使い続けたい物に使います。
+# データは PersistentVolumeClaim(PVC = 保存場所の予約票)で確保した場所に置くので、Pod を消してもデータは残ります
+# (クラスタごと消す k8s/down.sh では消えます)。
+# 表の作成と見本データの投入は、api(ASPECT=api)が起動したときに行います。
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: db
+  labels: { app.kubernetes.io/name: db, app.kubernetes.io/part-of: samplestore }
+spec:
+  serviceName: db
+  replicas: 1
+  selector:
+    matchLabels: { app.kubernetes.io/name: db }
+  template:
+    metadata:
+      labels: { app.kubernetes.io/name: db, app.kubernetes.io/part-of: samplestore }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17.11-alpine
+          ports:
+            - { name: postgres, containerPort: 5432 }
+          env:
+            - { name: POSTGRES_USER, value: store }
+            - { name: POSTGRES_DB, value: store }
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: lab-secrets, key: PGPASSWORD }
+            # 保存場所の直下ではなく、1 段下のフォルダを使います(PostgreSQL の決まりごと)。
+            - { name: PGDATA, value: /var/lib/postgresql/data/pgdata }
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "store", "-d", "store"] }
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec: { command: ["pg_isready", "-U", "store", "-d", "store"] }
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 6
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+          volumeMounts:
+            - { name: data, mountPath: /var/lib/postgresql/data }
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+# Service = 代表の窓口。api などは「db:5432」で届きます(manifest.json の commonEnv の PGHOST: db)。
+apiVersion: v1
+kind: Service
+metadata:
+  name: db
+  labels: { app.kubernetes.io/name: db, app.kubernetes.io/part-of: samplestore }
+spec:
+  selector: { app.kubernetes.io/name: db }
+  ports:
+    - { name: postgres, port: 5432, targetPort: postgres }

@@ -1,0 +1,7 @@
+# このファイルは tools/manifest/render.mjs が manifest.json から作りました。手で直さず、manifest.json を直して作り直してください。
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: www
+  annotations:
+    nginx.ingress.kubernetes.io/allowlist-source-range: "127.0.0.1/32,172.30.89.0/24,172.30.91.0/24"

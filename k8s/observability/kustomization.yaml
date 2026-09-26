@@ -1,0 +1,22 @@
+# 観測の道具一式の目次です。k8s/up.sh が kubectl apply -k k8s/observability で反映します。Helm は使わず、最小構成で書いています。
+#
+#   metrics.yaml   Prometheus(指標)・Alertmanager(通知のまとめ役)・pager(通知の受け口)
+#   grafana.yaml   Grafana(画面)
+#   logs.yaml      Loki(ログの保管庫)・Alloy(Pod のログを運ぶ係)
+#   traces.yaml    OpenTelemetry Collector(トレースの集配所)・Tempo(トレースの保管庫)   … 本格版だけ
+#
+# 設定ファイルは k8s/up.sh が ConfigMap に入れます。軽量版(observability/)と同じファイルを使う物と、本格版用(k8s/config/)があります。
+#   同じ物:   Prometheus のルール、Alertmanager、pager、Grafana のダッシュボード「サンプルストア SLO」、Loki
+#   本格版用: Prometheus の収集先(Pod を探す)、Alloy(Kubernetes の API からログを読む)、Grafana のデータソース(Tempo を足す)、
+#             ダッシュボード「サンプルストア 1 リクエストの道筋」、otel-collector、Tempo
+#
+# CCv2 との対応: Prometheus + Grafana + Tempo ≒ Dynatrace(指標とトレース)、Loki + Grafana ≒ OpenSearch(ログ)
+# データは emptyDir(Pod が消えると消える一時置き場)に置きます。ラボなので割り切っています。
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+resources:
+  - metrics.yaml
+  - grafana.yaml
+  - logs.yaml
+  - traces.yaml

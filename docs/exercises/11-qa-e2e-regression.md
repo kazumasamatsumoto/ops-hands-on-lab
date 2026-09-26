@@ -5,35 +5,41 @@ title: QA-1 E2E テストと画面比較
 # QA-1 E2E テストと画面比較
 
 ::: info この演習について
-- 所要時間: 約 25 分(web の作り直し 2 回を含む)
-- 使うもの: 軽量版(docker compose)。`tools/e2e.sh`(Playwright を Docker で動かす。初回はイメージの取得に数分)
-- 関係する設計書: [QA 方式 4.2 E2E テスト](/design/architecture/06-qa#s4-2)・[QA 方式 4.3 画面比較](/design/architecture/06-qa#s4-3)・[D-QA-04 E2E テスト](/design/detail/D-QA-04-e2e)
+- 所要時間: 約 25 分
+- 使うもの: 軽量版(docker compose)。`tools/e2e.sh`(Docker で Playwright を動かす)、`tools/chaos.sh`
+- 仕組みはこちら: [仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)・[仕組み-6 api(OCC・fields・CORS)](/how-it-works/06-api-occ)
+- 関係する設計書: [QA 方式](/design/architecture/06-qa)・[D-QA-04 E2E テスト](/design/detail/D-QA-04-e2e)
+- 用語集: [E2E テスト](/guide/glossary#e2e-test)・[Playwright](/guide/glossary#playwright)・[画面比較](/guide/glossary#visual-regression)・[回帰テスト](/guide/glossary#regression-test)
 :::
 
 ## 1. この設計書はなぜ必要か
 
-リリースのたびに人の手で全画面を確かめるのは、回数が増えるほど無理になります。そして人の目は「いつもと同じだろう」と思った所を見落とします。
+部品を 1 つずつ試して「動く」ことと、お客様が最初から最後まで「買える」ことは別です。つなぎ目で壊れることが多く、しかも見た目の崩れは人の目で毎回は見つけられません。
 
-> **よくある事故**: 金曜の夕方、商品詳細の見た目を少し整えるだけの修正をリリースしました。担当者は直した画面だけを確かめました。
-> ところが、同じ CSS をログイン画面も使っていて、「ログイン」ボタンが画面の外に押し出されていました。
-> 土日の 2 日間、新しくログインできたお客様は 1 人もいませんでした。機能のテスト(ボタンを押したら API が呼ばれるか)は、全部合格していたのです。
+> **よくある事故**: 決済のボタンの色を変える小さな修正で、ボタンが画面の外にはみ出してしまいました。
+> 単体の試験は全部通り、担当者も自分の PC では気づきませんでした。特定の画面幅のお客様だけが「買えない」状態になり、
+> 週明けまで誰も気づきませんでした。
 
-お客様が必ず通る道(導線)を機械に毎回なぞらせ(E2E テスト)、見た目の変化も機械に見張らせる(画面比較)。何をどこまで確かめるかを、QA の方式設計書で決めます。
+「主要な導線を最後まで通す(E2E)」「昨日の画面と今日の画面を機械で重ねて違いを見つける(画面比較)」を、QA の方式設計書で決めます。
 
 ## 2. 何をやっているのか
 
-`tools/e2e/` に Playwright(ブラウザを自動で操作する道具)のテストを 3 種類置いてあります。`tools/e2e.sh` が Docker の中でブラウザを動かし、利用者と同じ入口(edge)を通って操作します。
+`tools/e2e/` に Playwright(ブラウザを自動で操作する道具)のテストを置いてあります。`tools/e2e.sh` が Docker の中でブラウザを動かし、利用者と同じ入口(cdn-waf)を通って操作します。
 
 | ファイル | シナリオ | 確かめる物 |
 | --- | --- | --- |
-| `tests/journey.spec.ts` | トップ → 商品一覧 → 商品詳細 → ログイン(alice)→ 注文履歴 → 注文の詳細 | 見出し、商品名と価格、商品詳細が SSR で出ていること(`X-Render-Mode`)、注文の合計 |
-| `tests/authz.spec.ts` | bob でログインし、alice の注文の URL を直接開く | 「見つかりませんでした」と出て、中身が出ないこと |
-| `tests/visual.spec.ts` | トップ・商品一覧・商品詳細の画面を撮る | 基準画像との違いが 50 画素以内(画面下の描画モードの表示は隠して比べる) |
+| `tests/journey.spec.ts` | トップ → 検索 → 商品詳細 → ログイン(alice)→ 注文履歴 → 注文の詳細 / 無い商品の 404 | 見出し・商品名・価格・SSR で出ていること・注文の合計 |
+| `tests/authz.spec.ts` | bob でログインし、alice の注文の URL を直接開く | 「注文を表示できませんでした」と出て、中身が出ないこと |
+| `tests/visual.spec.ts` | トップ・検索結果・商品詳細の画面を撮る | 基準画像との違いが 50 画素以内(毎回変わる部分は隠す) |
 
 演習では、①ふつうに流して全部通る、②CSS を 1 行変えて画面比較だけが落ちる、③認可の穴を開けて認可のテストが落ちる、④元に戻して全部通る、の順に見ます。
 
 たとえ: **E2E テストは「毎朝の開店前に、店員がお客様役になって入口からレジまで一周する」** ことです。
 **画面比較は「昨日の売り場の写真と今日の売り場を重ねて、違う所に赤い印を付ける」** ことです。人の目では気づかない小さなずれも、写真を重ねれば一目で分かります。
+
+::: tip CCv2 では
+CCv2 の JS Storefront も、同じように Playwright などで E2E と画面比較を組みます。「他人の注文が見えないこと」を試験に必ず入れるのは、OCC を拡張した API の認可漏れ([BE-1](./04-be-api-and-authz))を出す前に見つけるためです。
+:::
 
 ## 3. まず触ってみる
 
@@ -45,27 +51,28 @@ title: QA-1 E2E テストと画面比較
 
    詳しい報告は `tools/e2e/playwright-report/index.html` をブラウザで開くと見られます。
 
-2. **CSS を 1 行だけ変える**。商品詳細の価格の文字を大きくします(「見た目を少し整えるだけ」のつもりの修正のまね)。
+2. **CSS を 1 行だけ変える**。商品詳細の価格の文字を大きくします(「見た目を少し整えるだけ」のつもりの修正のまね)。cdn-waf のキャッシュを避けるため、変更後に切ってから流します。
 
    ```bash
    cp apps/web/src/styles.css /tmp/styles.css.bak
    sed -i.tmp 's/^\.price\.large { font-size: 1\.4rem;/.price.large { font-size: 2.4rem;/' apps/web/src/styles.css && rm apps/web/src/styles.css.tmp
    diff /tmp/styles.css.bak apps/web/src/styles.css
-   docker compose up -d --build web
-   docker compose ps web        # (healthy) を待つ
-   sleep 31                     # edge のキャッシュ(30 秒)が切れるのを待つ
+   docker compose up -d --build storefront
+   docker compose ps storefront        # (healthy) を待つ
+   EDGE_CACHE=off docker compose up -d cdn-waf; docker compose ps cdn-waf   # 画面比較がキャッシュに当たらないように
    tools/e2e.sh
    ```
 
 3. **差分の画像を見る**。失敗の報告に出てくる `product-detail-diff.png`(`tools/e2e/test-results/` の下)を開くと、違う所が赤く塗られています。
-   報告の HTML(`tools/e2e/playwright-report/index.html`)では、基準・今回・差分をスライダーで見比べられます。
+   報告の HTML では、基準・今回・差分をスライダーで見比べられます。
 
-4. **CSS を元に戻す**。
+4. **CSS とキャッシュを元に戻す**。
 
    ```bash
    cp /tmp/styles.css.bak apps/web/src/styles.css && rm /tmp/styles.css.bak
-   docker compose up -d --build web
-   docker compose ps web        # (healthy) を待つ
+   docker compose up -d --build storefront
+   docker compose up -d cdn-waf        # EDGE_CACHE を付けずに起動 = on
+   docker compose ps storefront cdn-waf   # 両方 (healthy) を待つ
    ```
 
 5. **認可の穴を開けて、認可のテストだけ流す**。
@@ -79,7 +86,6 @@ title: QA-1 E2E テストと画面比較
 6. **全部が通ることを確かめる**。
 
    ```bash
-   sleep 31
    tools/e2e.sh
    ```
 
@@ -87,92 +93,94 @@ title: QA-1 E2E テストと画面比較
 
 ## 4. 何が見えたら成功か
 
-**手順 1**: 5 本とも通ります(2 秒ほどで終わります)。
+**手順 1**: 6 本とも通ります(数秒で終わります)。
 
 ```text
-Running 5 tests using 1 worker
-  ✓  1 [chromium] › tests/authz.spec.ts:7:5 › bob は alice の注文を見られない (300ms)
-  ✓  2 [chromium] › tests/journey.spec.ts:6:5 › 一覧 → 詳細 → ログイン → 注文履歴 が最後まで進める (426ms)
-  ✓  3 [chromium] › tests/visual.spec.ts:13:7 › 画面比較: top (169ms)
-  ✓  4 [chromium] › tests/visual.spec.ts:13:7 › 画面比較: product-list (255ms)
-  ✓  5 [chromium] › tests/visual.spec.ts:13:7 › 画面比較: product-detail (146ms)
-  5 passed (1.6s)
+  ✓  1 [chromium] › tests/authz.spec.ts:7:5 › bob は alice の注文を見られない (386ms)
+  ✓  2 [chromium] › tests/journey.spec.ts:7:5 › トップ → 検索 → 商品詳細 → ログイン → 注文履歴 が最後まで進める (556ms)
+  ✓  3 [chromium] › tests/journey.spec.ts:57:5 › 無い商品は 404 で「ページを表示できませんでした」 (110ms)
+  ✓  4 [chromium] › tests/visual.spec.ts:16:7 › 画面比較: top (871ms)
+  ✓  5 [chromium] › tests/visual.spec.ts:16:7 › 画面比較: search (680ms)
+  ✓  6 [chromium] › tests/visual.spec.ts:16:7 › 画面比較: product-detail (740ms)
+  6 passed
 ```
 
-**手順 2**: 導線のテスト(journey)は **通ってしまいます**。価格の文字「330 円」はちゃんと出ているからです。落ちるのは画面比較だけです。
+**手順 2**: 導線のテスト(journey)は **通ってしまいます**。価格「￥330」はちゃんと出ているからです。落ちるのは画面比較(product-detail)だけです。
 
 ```text
-  ✓  2 [chromium] › tests/journey.spec.ts:6:5 › 一覧 → 詳細 → ログイン → 注文履歴 が最後まで進める (458ms)
-  ✘  5 [chromium] › tests/visual.spec.ts:13:7 › 画面比較: product-detail (439ms)
+  ✓  2 [chromium] › tests/journey.spec.ts:7:5 › … が最後まで進める
+  ✓  4 [chromium] › tests/visual.spec.ts:16:7 › 画面比較: top
+  ✘  6 [chromium] › tests/visual.spec.ts:16:7 › 画面比較: product-detail
     Error: expect(page).toHaveScreenshot(expected) failed
-      3017 pixels (ratio 0.01 of all image pixels) are different.
-    Expected: tests/visual.spec.ts-snapshots/product-detail-chromium-linux.png
-    Received: test-results/visual-画面比較-product-detail-chromium/product-detail-actual.png
+      Expected an image 1280px by 1470px, received 1280px by 1491px. 67959 pixels (ratio 0.04 of all image pixels) are different.
     Diff:     test-results/visual-画面比較-product-detail-chromium/product-detail-diff.png
+  1 failed
+  5 passed
 ```
 
-**手順 3**: 差分の画像では、価格の「330 円」が 2 つ重なって赤く表示され、その下の在庫・説明・商品番号の行が下にずれたことも赤い線で分かります。
+価格の文字が大きくなったぶん、商品詳細の画面が縦に 21 画素伸び、その下の部品が全部ずれたので、違う画素が約 6.8 万個になりました。
+大きい価格(`.price.large`)は商品詳細にしか使っていないので、トップ(top)と検索(search)は通ります。差分の画素数はビルドごとに少し変わります。
+
+**手順 3**: 差分の画像では、価格の文字が大きくなった所と、そのせいで下にずれた部分が赤く表示されます。
 
 ::: tip 許す違いの決め方でテストの効き目が変わる
-最初は「画面の 1% までの違いは許す」という設定で試しました。すると、この変更(3,017 画素 = 画面の約 0.3%)は **見逃されて合格** しました。
-1280×800 の画面の 1% は約 1 万画素もあるからです。今の設定(`tools/e2e/playwright.config.ts`)は「50 画素まで」にしています。
-「どこまでの違いを許すか」も、設計書に書いてレビューする値です。
+最初は「画面の 1% までの違いは許す」という設定で試すと、小さな変更は **見逃されて合格** します。1280×1470 の画面の 1% は 1 万 8 千画素以上もあるからです。
+たとえば価格を 2.4rem ではなく 1.5rem にした場合、違いは約 1.4 万画素(画面の 0.74%)で、1% の設定なら合格してしまいます。
+今の設定(`tools/e2e/playwright.config.ts`)は「50 画素まで」にしています。「どこまでの違いを許すか」も、設計書に書いてレビューする値です。
 :::
 
-**手順 5**: 認可の穴を開けると、bob の画面に alice の注文が表示されてしまい、「見つかりませんでした」が出ないので落ちます。
+**手順 5**: 認可の穴を開けると、bob の画面に alice の注文が表示されてしまい、「注文を表示できませんでした」が出ないので落ちます。
 
 ```text
-  ✘  1 [chromium] › tests/authz.spec.ts:7:5 › bob は alice の注文を見られない (10.4s)
+  ✘  1 [chromium] › tests/authz.spec.ts:7:5 › bob は alice の注文を見られない
     Error: expect(locator).toBeVisible() failed
-    Locator: getByText('見つかりませんでした')
+    Locator: getByText('注文を表示できませんでした')
     Expected: visible
-    Timeout: 10000ms
     Error: element(s) not found
 ```
 
 失敗したときの画面(`test-failed-1.png`)と操作の記録(`trace.zip`)も自動で残ります。
 
-**手順 6**: 戻したら、また 5 本とも通ります。
+**手順 6**: 戻したら、また 6 本とも通ります。
 
-```text
-  5 passed (1.8s)
-```
+::: warning 画面比較は「毎回変わる部分」をそろえる
+在庫の数は worker の定期ジョブ(`stockImportJob`)が 1 分ごとに少し動かすので、基準画像とずれます。`visual.spec.ts` では、在庫の表示を隠し(mask)、「在庫なし」の印は撮る前に消して(並びが変わらないように)から比べています。
+「毎回変わる部分をどうそろえるか」を決めておかないと、画面比較が理由もなく落ちる(不安定なテスト)ようになります。
+:::
 
 ## 5. ここで覚える言葉
 
 | 言葉 | 一言でいうと | たとえ | この演習で見たもの |
 | --- | --- | --- | --- |
-| E2E テスト | 利用者と同じ操作を、入口から最後まで機械になぞらせる | 開店前に店員がお客様役で一周する | `journey.spec.ts` の 6 つの段階 |
-| 回帰テスト(リグレッションテスト) | 前は動いていた物が、変更で壊れていないかを確かめる | 模様替えのあと、全部の扉が開くか確かめる | CSS 変更後に 5 本を流し直した |
-| 画面比較(ビジュアルリグレッション) | 基準の画像と今の画像を重ねて違いを探す | 昨日と今日の売り場の写真を重ねる | `3017 pixels ... are different` |
-| 基準画像(スナップショット) | 「これが正しい見た目」として保存した画像 | 見本の写真 | `tests/visual.spec.ts-snapshots/*.png` |
-| しきい値 | どこまでの違いを許すか | 写真の「ぶれ」をどこまで許すか | 1% では見逃し、50 画素で検出 |
-| Playwright | ブラウザを自動で操作するテストの道具 | 疲れないお客様役のロボット | `tools/e2e.sh` |
-| フレーキー(不安定)なテスト | 同じ条件なのに通ったり落ちたりするテスト | 日によって答えが変わる検査 | 固定の秒数で待たない書き方で防ぐ |
+| [E2E テスト](/guide/glossary#e2e-test) | 入口から出口まで通しで試す | 開店前の一周点検 | journey.spec.ts |
+| [Playwright](/guide/glossary#playwright) | ブラウザを自動で操作する道具 | 決まった手順で動くロボット店員 | `tools/e2e.sh` |
+| [画面比較](/guide/glossary#visual-regression) | 基準画像と今の画面を機械で重ねる | 昨日と今日の売り場の写真を重ねる | `93 pixels are different` |
+| [回帰テスト](/guide/glossary#regression-test) | 前に直した所が、また壊れていないかを確かめる | 直した箇所の再点検 | 認可の穴が戻っていないか(authz) |
+| 役割で探す | ボタン・見出しといった役割と文字で部品を探す | 「レジ」と書かれた窓口を探す | `getByRole('heading', ...)` |
+| 不安定なテスト(flaky) | 理由もなく落ちたり通ったりするテスト | 気分屋の点検員 | 在庫の変化を隠して防ぐ |
 
 ## 6. 設計書ではここに書く
 
-- **[QA 方式 4.1 テストの種類](/design/architecture/06-qa#s4-1)**: 「正常に動くこと」だけでなく「**見えてはいけない物が見えないこと**(他人の注文など)」も E2E に入れる、と書きます。
-- **[QA 方式 4.2 E2E テスト](/design/architecture/06-qa#s4-2)**: どの導線を自動で流すか(買い物の最後まで)、いつ流すか(変更のたび・リリース前)、落ちたらリリースしない。
-- **[QA 方式 4.3 画面比較](/design/architecture/06-qa#s4-3)**: 比べる画面、画面の大きさ、隠す部分、**許す違い(50 画素)**、基準画像を撮り直すときの承認の流れ。
-- **[D-QA-04 E2E テスト](/design/detail/D-QA-04-e2e)**(一般のカタログでは D-QA-04): シナリオごとの手順と確かめる物の表、使う見本データ、「わざと壊したら落ちること」の確認結果。
+- **[QA 方式 4.2 E2E テスト](/design/architecture/06-qa#s4-2)・[4.3 画面比較](/design/architecture/06-qa#s4-3)**: 必ず通す導線、画面比較の対象、許す違いの大きさ(何画素まで)。
+- **[QA 方式 4.4 守りの確認](/design/architecture/06-qa#s4-4)**: 「2 人の会員で互いのデータを読みに行く」を試験に入れる。
+- **[D-QA-04 4.1 確かめ方の決まり](/design/detail/D-QA-04-e2e#s4-1)・[4.2 画面比較の決まり](/design/detail/D-QA-04-e2e#s4-2)**: 部品の探し方(役割と文字)、待ち方(見えるまで待つ)、毎回変わる部分の隠し方。
 
 ## 7. レビューで聞く質問
 
-- 「お客様が買い物を終えるまでの導線は、E2E テストに入っていますか。どこで終わっていますか。」
-- 「『他人の注文が見えない』のような、見えてはいけない物を確かめるテストはありますか。」
-- 「わざと壊したとき(API のエラー、認可の抜け、SSR の不具合)に、本当にテストが落ちることを確かめましたか。」
-- 「画面比較で許す違いはいくつですか。その値で、ボタン 1 つの位置ずれを見つけられますか。」
-- 「基準画像を撮り直すのは誰で、誰が承認しますか。」
-- 「テストの中で、固定の秒数(3 秒待つ、など)で待っている所はありませんか。」
+- 「E2E で必ず通す導線はどれですか。決済や注文まで含みますか。」
+- 「他人のデータが見えないこと(認可)は、試験に入っていますか。」
+- 「画面比較で許す違いは何画素までですか。その数字はどう決めましたか。」
+- 「毎回変わる部分(時刻・在庫・広告)は、どうやって比較から外していますか。」
+- 「テストが理由もなく落ちる(不安定)とき、どう扱いますか。無視する運用になっていませんか。」
 
 ## 8. 片付け
 
+CSS とキャッシュが元に戻っているか確かめます。
+
 ```bash
-tools/chaos.sh reset                                   # idorBug を false に戻す
-grep -n 'price.large' apps/web/src/styles.css          # font-size: 1.4rem に戻っていればよい
-docker compose ps web                                  # (healthy) ならよい
-rm -rf tools/e2e/test-results tools/e2e/playwright-report   # 報告を消す(残しておいてもかまいません)
+git status --short apps/web/src/styles.css 2>/dev/null   # 何も出なければ元通り(git で取ってきた場合)
+tools/chaos.sh status                                    # idorBug が false ならよい
+docker compose exec -T cdn-waf printenv EDGE_CACHE       # on ならよい
 ```
 
-`tools/e2e/node_modules`・`test-results`・`playwright-report` は `.gitignore` でリポジトリに入らないようにしてあります。基準画像(`tests/visual.spec.ts-snapshots/`)はリポジトリに入れて管理します。
+画面比較の基準画像を撮り直したいときは `tools/e2e.sh --update-snapshots` です(意図した見た目の変更のときだけ)。

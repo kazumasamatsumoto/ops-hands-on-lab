@@ -1,0 +1,36 @@
+# Tempo(トレースの保管庫)の設定です。本格版だけで使います。1 台で全部の役をこなす最小構成です。
+#
+# トレース = 1 つのリクエストが、どのサービスをどの順に通り、それぞれ何ミリ秒かかったかの記録(道筋)です。
+# 1 本のトレースは区間(span)の集まりで、全部に同じ trace_id が付きます。ログにも同じ trace_id が入るので、
+# Grafana で「このログのリクエストの道筋」へ飛べます。
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200 # Grafana が問い合わせる口(/api/search・/api/traces/<trace_id>)
+  log_level: warn
+
+# 受け取り口。otel-collector が OTLP/gRPC(4317)で送ってきます。
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 24h # 1 日で消す(ラボなので短く)
+
+storage:
+  trace:
+    backend: local # Pod の中の一時置き場(emptyDir)。Pod が消えるとトレースも消えます
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+usage_report:
+  reporting_enabled: false

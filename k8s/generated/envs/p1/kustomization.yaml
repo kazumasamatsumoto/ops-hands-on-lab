@@ -1,0 +1,27 @@
+# このファイルは tools/manifest/render.mjs が manifest.json から作りました。手で直さず、manifest.json を直して作り直してください。
+# 環境 p1: 本番。storefront と api を 2 台ずつ、キャッシュあり、お店は誰でも・backoffice は社内だけ
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: lab
+resources:
+  - ../../base
+replicas:
+  - name: storefront
+    count: 2
+  - name: api
+    count: 2
+  - name: backoffice
+    count: 1
+  - name: worker
+    count: 1
+configMapGenerator:
+  - name: lab-environment
+    literals:
+      - "LAB_ENV=p1"
+      - "EDGE_CACHE=on"
+      - "SEARCH_PROVIDER=solr"
+generatorOptions:
+  disableNameSuffixHash: true
+patches:
+  - path: patches/env-api.yaml
+  - path: patches/env-worker.yaml

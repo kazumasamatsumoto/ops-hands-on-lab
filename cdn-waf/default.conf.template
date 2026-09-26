@@ -1,0 +1,236 @@
+# cdn-waf(CDN と WAF の役)の nginx 設定です。
+#
+# ■ ラボの入口は 2 段になっています
+#
+#   ブラウザ ─▶ [cdn-waf] ─▶ [ingress] ─▶ storefront / api / backoffice
+#               クラスタの外     クラスタの入口
+#
+#   cdn-waf(この設定)… クラスタの「外」に置く CDN と WAF の役です。CCv2 の案件では、お客さんが別に契約する
+#                        CDN・WAF(例: CloudFront + AWS WAF)に当たります。世界中の利用者の近くでキャッシュを返し、
+#                        攻撃らしいリクエストを、お店(クラスタ)に届く前に止めます。
+#   ingress(ingress/)  … クラスタの「入口」です。CCv2 では Cloud Portal の「エンドポイント」と「IP フィルタ」に当たります。
+#                        ホスト名を見て、どのサービス(storefront・api・backoffice)に渡すかを決め、社内だけの画面は IP で絞ります。
+#
+#   なぜ 2 段か: 役割と持ち主が違うからです。CDN・WAF は「大量の利用者・攻撃をさばく、外側の盾」、
+#   ingress は「お店の中のどの窓口に案内するかを決める受付」です。たとえると、ショッピングモールの警備員(cdn-waf)と、
+#   お店の受付係(ingress)です。警備員は怪しい人を止め、よく聞かれる案内(キャッシュ)は自分で答えます。
+#   受付係は「どの窓口か」と「社員専用の部屋に入れてよいか(IP 制限)」を決めます。
+#
+# ■ このファイルは起動時に envsubst で ${...} の部分が環境変数に置き換わります(docker-compose.yml の cdn-waf の environment)。
+#   小文字の $host などは nginx の変数なので置き換わりません。
+#
+# ■ やっていること
+#   1. ホスト名ごとの server(www・api・backoffice)。行き先はどれも ingress です(振り分けは ingress の仕事)
+#   2. キャッシュ   www の画面の HTML、api の商品・CMS の GET(30 秒)、商品画像 /medias/(1 日)
+#   3. レート制限   IP ごとに 1 秒 ${EDGE_GLOBAL_RATE}(全体。ログインの回数制限は ingress 側)
+#   4. セキュリティヘッダ  CSP などをホストごとに
+#   5. WAF          ModSecurity + OWASP CRS(設定はイメージ側。遮断モード。例外は modsecurity/ に)
+
+# ---------- ログ(1 行 1 JSON。Loki で探しやすくするため) ----------
+# request_id はリクエストごとに nginx が作る番号です。次の段(ingress)へ X-Request-Id ヘッダで渡し、
+# ingress・storefront・api のログにも同じ番号が入るので、1 つのリクエストを部品をまたいで追えます。
+log_format cdn_json escape=json
+  '{"time":"$time_iso8601","service":"cdn-waf","host":"$host","remote_addr":"$remote_addr","client_ip":"$client_ip",'
+  '"request_id":"$request_id",'
+  '"method":"$request_method","uri":"$request_uri","status":$status,'
+  '"bytes":$body_bytes_sent,"request_time":$request_time,'
+  '"upstream_status":"$upstream_status","upstream_time":"$upstream_response_time",'
+  '"cache":"$upstream_cache_status","user_agent":"$http_user_agent"}';
+
+# ---------- キャッシュ ----------
+# ためる場所(容量 100MB まで、1 日使われなければ捨てる)。
+proxy_cache_path /tmp/nginx-cache levels=1:2 keys_zone=store_cache:10m max_size=100m inactive=1d use_temp_path=off;
+
+# キャッシュの ON/OFF は環境変数 EDGE_CACHE の 1 か所で切り替えます(on 以外なら OFF)。
+map "${EDGE_CACHE}" $cache_disabled {
+  default 1;
+  on      0;
+}
+
+# ログイン中の人(Authorization か Cookie を持っている)のリクエストはためず、ためた物も返しません。
+# ためてしまうと、ほかの人に「その人専用の返事」を見せてしまう事故になります。
+map "$http_authorization$http_cookie" $has_credentials {
+  ""      0;
+  default 1;
+}
+
+# ---------- レート制限 ----------
+# 「IP アドレスごとに 1 秒に何回まで」を数える帳簿です。3 つのホスト名で 1 つの帳簿を共有します(同じ人の合計)。
+limit_req_zone $binary_remote_addr zone=per_ip:10m rate=${EDGE_GLOBAL_RATE};
+limit_req_status 429;
+limit_req_log_level warn;
+
+# ---------- 利用者の IP ----------
+# cdn-waf の入口は 2 つあります。
+#   8081 … ホスト PC 用。docker-compose.yml で 127.0.0.1:18080 にだけつないでいるので、ここに来られるのはこの PC だけです。
+#          Docker Desktop は、ホスト PC からの通信の送り元を別の番号に書き換えます(環境によって 172.30.89.1・192.168.65.1・
+#          まったく別の番号などさまざま)。そこで、この入口に来た通信は「ホスト PC の 127.0.0.1 から来た」として ingress に伝えます。
+#   18080 … Docker のネットワークの中(Playwright・k6 など)と、社外の代わりのネットワーク(outside)用。送り元の IP をそのまま伝えます。
+#          ホストと同じ番号にしてあるので、コンテナの中からも http://www.lab.localhost:18080 と同じ URL で開けます
+#          (tools/ のスクリプトは docker run --add-host www.lab.localhost:172.30.89.10 で、名前を cdn-waf の IP に向けています)。
+map $server_port $client_ip {
+  8081    127.0.0.1;
+  default $remote_addr;
+}
+
+# ---------- 3 つのホストに共通の設定 ----------
+access_log /dev/stdout cdn_json;
+server_tokens off;
+proxy_http_version 1.1;
+# 行き先(ingress)にはホスト名をそのまま渡します。ingress はこのホスト名で振り分けます。
+proxy_set_header Host $host;
+proxy_set_header Connection "";
+# 利用者の IP を ingress に伝えます。ingress の IP 制限・ログイン回数の制限は、この値を見ます。
+# 「足す($proxy_add_x_forwarded_for)」ではなく「上書き」にしているのは、利用者が偽の X-Forwarded-For を
+# 付けてきても、それを信じないためです(CDN が「本当の相手の IP」を書く、という約束)。
+proxy_set_header X-Forwarded-For $client_ip;
+proxy_set_header X-Real-IP $client_ip;
+proxy_set_header X-Forwarded-Proto $scheme;
+# リクエスト番号(上のログの request_id と同じ値)。利用者が送ってきた X-Request-Id は使わず、ここで作った番号で上書きします。
+proxy_set_header X-Request-Id $request_id;
+proxy_connect_timeout 3s;
+proxy_read_timeout 30s;
+
+# キャッシュの共通の決まり(proxy_cache を書いた location でだけ効きます)。
+proxy_cache_key "$request_method$host$request_uri";
+proxy_cache_methods GET HEAD;
+proxy_cache_bypass $cache_disabled $has_credentials;
+proxy_no_cache     $cache_disabled $has_credentials;
+# 返事に Cache-Control: no-store / private / no-cache が付いていれば、nginx はためません(nginx の既定の動き)。
+#   例: SSR をあきらめた「空の HTML」、注文・トークンの返事。
+# 返事に Cache-Control: max-age が付いていれば、その秒数ためます(例: /medias/ の 86400 秒)。
+# 何も付いていなければ、location ごとの proxy_cache_valid の時間ためます。
+# 同じ物を同時にたくさん頼まれたら、奥に取りに行くのは 1 回だけにします(行列の先頭の人だけが取りに行く)。
+proxy_cache_lock on;
+
+server {
+  listen 18080 default_server;
+  listen 8081 default_server;
+  server_name _;
+
+  # 知らないホスト名(例: http://localhost:18080)には、正しい入口を案内します。
+  location = /cdn-healthz {
+    access_log off;
+    default_type text/plain;
+    return 200 "ok\n";
+  }
+  location / {
+    default_type text/plain;
+    return 404 "このホスト名は使っていません。http://www.lab.localhost:18080/ を開いてください。\n";
+  }
+}
+
+# ======================================================================
+# www.lab.localhost … お店の画面(storefront)
+# ======================================================================
+server {
+  listen 18080;
+  listen 8081;
+  server_name www.lab.localhost;
+
+  set $ingress http://${INGRESS_UPSTREAM};
+  limit_req zone=per_ip burst=${EDGE_GLOBAL_BURST} nodelay;
+
+  # ---------- セキュリティヘッダ ----------
+  # add_header は location に 1 つでも書くと、ここの設定が引き継がれなくなるため、location には書きません。
+  add_header Content-Security-Policy "${WWW_CSP}" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header X-Frame-Options "DENY" always;
+  # キャッシュを使った場所だけ HIT / MISS / BYPASS / EXPIRED が入ります(使っていない場所では付きません)。
+  add_header X-Cache-Status $upstream_cache_status always;
+
+  # 画面の HTML をためるのは、誰が見ても同じ画面だけです: トップ・商品詳細・検索結果(30 秒)。
+  # ログイン・注文履歴は人によって中身が違う(と考える)ので、ためません。
+  location = / {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+  location ~ ^/p/[^/]+/?$ {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+  location = /search {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+
+  location / {
+    proxy_pass $ingress;
+  }
+}
+
+# ======================================================================
+# api.lab.localhost … OCC 風の REST API・OAuth・商品画像
+# ======================================================================
+server {
+  listen 18080;
+  listen 8081;
+  server_name api.lab.localhost;
+
+  set $ingress http://${INGRESS_UPSTREAM};
+  limit_req zone=per_ip burst=${EDGE_GLOBAL_BURST} nodelay;
+
+  # api は HTML を返さないので、CSP は「何も読み込ませない」いちばん厳しい形にします。
+  add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+  add_header X-Frame-Options "DENY" always;
+  add_header X-Cache-Status $upstream_cache_status always;
+
+  # 商品検索・商品 1 件・CMS のページは、誰が聞いても同じ答えなので 30 秒ためます。
+  # api は返事に「Vary: Origin」を付けるので、nginx は Origin ヘッダの値ごとに別々にためます
+  # (www から来た返事の Access-Control-Allow-Origin を、別のオリジンの人に使い回さないため)。
+  location = /occ/v2/samplestore/products/search {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+  location ~ ^/occ/v2/samplestore/products/[^/]+$ {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+  location = /occ/v2/samplestore/cms/pages {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 30s;
+    proxy_pass $ingress;
+  }
+  # 商品画像は変わらないので 1 日ためます(api も Cache-Control: max-age=86400 を付けています)。
+  location /medias/ {
+    proxy_cache store_cache;
+    proxy_cache_valid 200 1d;
+    proxy_pass $ingress;
+  }
+
+  # それ以外(トークン・注文など)はためずに通します。
+  location / {
+    proxy_pass $ingress;
+  }
+}
+
+# ======================================================================
+# backoffice.lab.localhost … 社内向けの管理画面
+# ======================================================================
+server {
+  listen 18080;
+  listen 8081;
+  server_name backoffice.lab.localhost;
+
+  set $ingress http://${INGRESS_UPSTREAM};
+  limit_req zone=per_ip burst=${EDGE_GLOBAL_BURST} nodelay;
+
+  # サーバーで作る HTML(script は無し、style は埋め込み)に合わせた CSP です。
+  add_header Content-Security-Policy "default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; base-uri 'self'; frame-ancestors 'none'" always;
+  add_header X-Content-Type-Options "nosniff" always;
+  add_header Referrer-Policy "same-origin" always;
+  add_header X-Frame-Options "DENY" always;
+
+  # 管理画面はキャッシュしません。IP の制限は ingress がかけます(ここでは通すだけ)。
+  location / {
+    proxy_pass $ingress;
+  }
+}

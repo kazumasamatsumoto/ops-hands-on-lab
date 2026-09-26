@@ -9,9 +9,13 @@
 # 利用者の体験とは関係がないためです。
 #
 # 名前の付け方は「level:metric:operations」(Prometheus の慣習)にしています。
+#
+# job ラベル(= サービス)ごとに計算します: storefront・api・backoffice・worker。
+# SLO(目標)とアラートを持つのは、お客さんが直接使う storefront と api だけです(slo-alerts.yml)。
+# backoffice(社内向け)と worker(画面を持たない)は、数字は作りますが、目標は置いていません。
 
 groups:
-  - name: sli-api
+  - name: sli-http
     interval: 5s
     rules:
       # ---- 件数(1 秒あたり) ----
@@ -88,7 +92,7 @@ groups:
           histogram_quantile(0.95,
             sum by (job, le) (rate(http_request_duration_seconds_bucket{route!~"/metrics|/healthz|/readyz|/admin/.*|unmatched"}[5m])))
 
-  - name: slo-api
+  - name: slo-burn-rate-recording
     interval: 5s
     rules:
       # SLO(目標)は「1 か月の成功率 99.9%」。
@@ -115,7 +119,7 @@ groups:
       - record: job:slo_error_budget_remaining:ratio30d
         expr: 1 - (job:http_errors:ratio_rate30d / 0.001)
 
-  - name: sli-web-ssr
+  - name: sli-storefront-ssr
     interval: 5s
     rules:
       # SSR(サーバーで画面を組み立てる処理)の p95 時間(秒)
@@ -130,3 +134,16 @@ groups:
           sum by (job) (rate(ssr_render_duration_seconds_count[5m]))
       - record: job:ssr_errors:rate5m
         expr: sum by (job) (rate(ssr_errors_total[5m]))
+
+  - name: sli-cronjob
+    interval: 5s
+    rules:
+      # 定期ジョブの失敗率(直近 5 分)= 失敗した回数 ÷ 動いた回数。job はジョブ名(stockImportJob など)です。
+      - record: job:cronjob_failure:ratio_rate5m
+        expr: |
+          sum by (job) (rate(cronjob_runs_total{result="failure"}[5m]))
+          /
+          sum by (job) (rate(cronjob_runs_total[5m]))
+      # 最後に成功してから何秒たったか。ずっと成功していれば、ほぼジョブの間隔(既定 60 秒)以下です。
+      - record: job:cronjob_seconds_since_last_success
+        expr: time() - max by (job) (cronjob_last_success_timestamp_seconds)
