@@ -81,7 +81,7 @@ api は起動時にテーブルが空なら見本データを入れます。ボ�
 | --- | --- | --- | --- |
 | 商品・分類・会員・注文 | DB(`products`・`categories`・`users`・`orders`・`order_entries`) | する | `tools/restore.sh` |
 | 画面の部品(CMS) | DB(`cms_pages`・`cms_slots`・`cms_slot_components`・`cms_components`) | する | 同上。backoffice で変えたバナーの文言も戻る |
-| ログインのトークン・管理画面のセッション | DB(`oauth_access_tokens`・`backoffice_sessions`) | される(同じ DB のため) | 戻さなくてもよい物。15 分で切れる。戻したくなければ復元のあと消す |
+| ログインのトークン・管理画面のセッション | DB(`oauth_access_tokens`・`backoffice_sessions`) | される(同じ DB のため) | 戻さなくてもよい物。トークンは 15 分、管理画面のセッションは 8 時間で切れる。戻したくなければ復元のあと消す |
 | 検索の索引 | Solr(本格版。コア `products`) | しない | worker の `searchIndexJob` が DB から全件を入れ直す(既定 60 秒ごと)。止まっていれば `CronJobStale` で気づく |
 | 画像 | api がその場で作る(`/medias/`) | 不要 | — |
 | 指標・ログ | Prometheus・Loki のボリューム | しない | 失ってよい(ラボ) |

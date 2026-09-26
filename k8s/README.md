@@ -169,7 +169,7 @@ kubectl -n lab get ingress
 kubectl -n lab get ingress -o custom-columns='NAME:.metadata.name,HOST:.spec.rules[0].host,PATH:.spec.rules[0].http.paths[*].path,ALLOW:.metadata.annotations.nginx\.ingress\.kubernetes\.io/allowlist-source-range,DENY:.metadata.annotations.nginx\.ingress\.kubernetes\.io/denylist-source-range,RPS:.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps'
 # 中の人だけの口は外から 403
 curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/admin/chaos
-# ログインの回数制限(1 秒 1 回、最初の 5 回はまとめて可)。続けて 10 回送ると後半が 429
+# ログインの回数制限(1 秒 1 回 + 余裕 5 回)。続けて 10 回送ると 7 回目から 429
 for i in $(seq 10); do curl -s -o /dev/null -w '%{http_code} ' http://api.lab.localhost:18080/authorizationserver/oauth/token \
   -d 'grant_type=password&client_id=storefront&username=alice&password=password'; done; echo
 ```
@@ -382,7 +382,7 @@ Pod ごとの予約(requests)と上限(limits)は `kubectl -n lab describe node 
 | `ネットワーク lab-kind の番号が…` で止まる | 同じ名前で別の番号のネットワークがあります。`docker network rm lab-kind` してからやり直す |
 | Pod が `Pending` のまま | メモリが足りません。`kubectl -n lab describe pod <名前>` の Events に `Insufficient memory`。Docker Desktop のメモリを増やす |
 | Pod が `ImagePullBackOff` | ネット接続を確認。`lab/api:local` なら `kind load docker-image lab/api:local --name lab` をやり直す |
-| 古い画面のまま | イメージを作り直したら `kind load docker-image ...` と `rollout restart` の両方が必要です(`k8s/up.sh` は両方やります) |
+| 古い画面のまま | イメージを作り直したら `kind load docker-image ...` と `rollout restart` の両方が必要です。`k8s/up.sh` がやるのはビルドと `kind load` までなので(名前が同じ `lab/api:local`・`lab/web:local` のため、動いている Pod は入れ替わりません)、続けて `kubectl -n lab rollout restart deploy/api deploy/backoffice deploy/worker deploy/storefront` を打ちます |
 | お店が 502・504 | ingress-nginx か storefront が準備中です。`kubectl -n ingress-nginx get pods`・`kubectl -n lab get pods`、`docker logs lab-cdn-waf` |
 | backoffice がこの PC からも 403 | cdn-waf を通していますか(`http://backoffice.lab.localhost:18080`)。`kubectl -n ingress-nginx logs deploy/ingress-nginx-controller` の `remote_addr` が 127.0.0.1 か確かめる |
 | kubectl が別のクラスタにつながる | `kubectl config use-context kind-lab` |

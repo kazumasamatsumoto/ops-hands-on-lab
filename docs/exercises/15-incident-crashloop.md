@@ -114,6 +114,7 @@ req=20 code=200 164.8MiB / 256MiB
 req=30 code=200 215MiB / 256MiB
 req=40 code=502 0B / 0B
 req=50 code=200 32.38MiB / 256MiB
+req=60 code=200 32.40MiB / 256MiB
 {"latencyMs":0,"errorRate":0,"leakMb":0,...}
 restarts=1
 ```

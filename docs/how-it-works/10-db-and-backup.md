@@ -43,7 +43,7 @@ api・backoffice・worker は同じ倉庫を使い、決まった数の **通路
 ```text
  db が止まる
    api の /readyz   → SELECT 1 が失敗 → 503 {"status":"not_ready","reason":"db_unreachable"}
-   本格版           → readinessProbe が 3 回続けて失敗 → READY 0/1 → Service の振り分け先から外れる
+   本格版           → readinessProbe が 2 回続けて失敗(5 秒ごと)→ READY 0/1 → Service の振り分け先から外れる
                       (livenessProbe の /healthz は DB を見ないので、再起動はされない)
    軽量版           → docker compose ps で (unhealthy)
    待機中の接続     → DB から切られた知らせを受け取り、ログに残すだけ(プロセスは落ちない)
@@ -227,10 +227,10 @@ kubectl -n lab exec -i db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --singl
 
 | ラボ | CCv2 で当たるもの |
 | --- | --- |
-| PostgreSQL(db) | CCv2 が用意するデータベース(クラウドの管理された DB。利用者はサーバーを持たない) |
-| 表を api の起動時に作る | デプロイのときの「DB の初期化・更新」(データを消して作り直す / 型の変更だけ入れる / 何もしない、を選ぶ) |
+| PostgreSQL(db) | CCv2 が用意するデータベース(クラウドの管理された DB。PostgreSQL ではなく Azure SQL。利用者はサーバーを持たない) |
+| 表を api の起動時に作る | デプロイのときの「DB の初期化・更新」(データを消して作り直す / DB を更新する / 何もしない、を選ぶ) |
 | `PG_POOL_MAX`・`connectionTimeoutMillis` | 接続プールの設定(プロパティで決める。台数 × 上限と、DB 側の上限を見比べるのは同じ) |
-| `tools/backup.sh`(`pg_dump`) | Cloud Portal のバックアップ(DB とメディアをまとめて取る。定期の自動バックアップもある) |
+| `tools/backup.sh`(`pg_dump`) | Cloud Portal のバックアップ(DB とメディアを、時刻付きの控えとして取る。Cloud Portal のバックアップは自分で取るもので、これとは別にクラウドの DB 自体も自動でバックアップを取っている) |
 | `tools/restore.sh` | Cloud Portal の復元(別の環境に戻すこともできる。戻す前に「何を失うか」を確かめる) |
 | RTO・RPO | SAP との契約・運用の取り決めと、案件の DR 設計で決める目標値 |
 | `/readyz` が DB を見る | CCv2 の aspect の準備確認(SAP 側の仕組み) |

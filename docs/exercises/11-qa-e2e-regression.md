@@ -154,7 +154,7 @@ CCv2 の JS Storefront も、同じように Playwright などで E2E と画面�
 | --- | --- | --- | --- |
 | [E2E テスト](/guide/glossary#e2e-test) | 入口から出口まで通しで試す | 開店前の一周点検 | journey.spec.ts |
 | [Playwright](/guide/glossary#playwright) | ブラウザを自動で操作する道具 | 決まった手順で動くロボット店員 | `tools/e2e.sh` |
-| [画面比較](/guide/glossary#visual-regression) | 基準画像と今の画面を機械で重ねる | 昨日と今日の売り場の写真を重ねる | `93 pixels are different` |
+| [画面比較](/guide/glossary#visual-regression) | 基準画像と今の画面を機械で重ねる | 昨日と今日の売り場の写真を重ねる | `67959 pixels (ratio 0.04 of all image pixels) are different` |
 | [回帰テスト](/guide/glossary#regression-test) | 前に直した所が、また壊れていないかを確かめる | 直した箇所の再点検 | 認可の穴が戻っていないか(authz) |
 | 役割で探す | ボタン・見出しといった役割と文字で部品を探す | 「レジ」と書かれた窓口を探す | `getByRole('heading', ...)` |
 | 不安定なテスト(flaky) | 理由もなく落ちたり通ったりするテスト | 気分屋の点検員 | 在庫の変化を隠して防ぐ |

@@ -73,7 +73,9 @@ CCv2 の見張り(Dynatrace)では「storefront の 5xx の割合」で気づく
 
    - Prometheus(http://localhost:19090)の「Query」で `ssr_errors_total` と `job:ssr_errors:rate5m` を実行します。
    - 「Alerts」を開くと `SSRErrors` が `firing`(鳴っている)になります。
-   - pager(http://localhost:19094)に通知が届きます。storefront の 500 は SLO(成功率の目標)も削るので、`ErrorBudgetBurnPage`(緊急)も一緒に届きます。
+   - pager(http://localhost:19094)に通知が届きます。storefront の 500 は SLO(成功率の目標)も削るので、`ErrorBudgetBurnPage`(緊急)も一緒に鳴ります。
+     ただし Alertmanager には「緊急(page)が鳴っている間は、同じサービスの警告(ticket)を黙らせる」決まり(`observability/alertmanager/alertmanager.yml` の `inhibit_rules`)があります。
+     `SSRErrors` は警告(ticket)なので、`ErrorBudgetBurnPage` が先に届くと pager には届かず、Alertmanager(http://localhost:19093)で `suppressed`(黙らされた)と表示されます。どちらが先になるかは、そのときの数秒の差で変わります。
 
 5. **同じバグのまま CSR にする**。ブラウザで組み立てるなら、`window` があるので動きます。
 
@@ -115,9 +117,9 @@ ssr_errors_total{job="storefront"}           25
 job:ssr_errors:rate5m{job="storefront"}      0.0837      ← 1 秒あたり約 0.08 件の SSR エラー
 
 Alerts:  SSRErrors (storefront) firing / ErrorBudgetBurnPage (storefront) firing
-pager:   10:24:32 firing ErrorBudgetBurnDemo storefront
-         10:25:25 firing SSRErrors storefront
-         10:25:37 firing ErrorBudgetBurnPage storefront
+pager:   15:08:42 firing ErrorBudgetBurnDemo storefront
+         15:09:42 firing ErrorBudgetBurnPage storefront
+         (SSRErrors は Alertmanager で suppressed。ErrorBudgetBurnPage より先に届いた回は、pager に firing SSRErrors も並びます)
 ```
 
 いちばん早く届く `ErrorBudgetBurnDemo` は演習用の「早く鳴る」アラートです([SRE-2](./10-sre-burn-rate-alert) で詳しく見ます)。

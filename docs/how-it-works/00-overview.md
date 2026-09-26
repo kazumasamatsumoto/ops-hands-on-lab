@@ -61,7 +61,7 @@ title: 仕組み-0 クリックから DB まで(全体の流れ)
   帰り道: db → api(JSON)→ storefront(HTML を完成)→ ingress → cdn-waf(30 秒ためる・ヘッダを足す)→ ブラウザ
 ```
 
-1. **ブラウザ**: `www.lab.localhost` という名前を IP アドレスに直します。`.localhost` で終わる名前は、設定しなくても自分の PC(127.0.0.1)になります。ポート 18080 に TCP でつなぎ、HTTP の `GET /p/100001` と `Host: www.lab.localhost` ヘッダを送ります。
+1. **ブラウザ**: `www.lab.localhost` という名前を IP アドレスに直します。`.localhost` で終わる名前は、Chrome・Edge・Firefox と curl なら設定しなくても自分の PC(127.0.0.1)になります(Safari など一部のブラウザは自動では解決しないので、[はじめに](/guide/setup) の `/etc/hosts` の 1 行を足します)。ポート 18080 に TCP でつなぎ、HTTP の `GET /p/100001` と `Host: www.lab.localhost` ヘッダを送ります。
 2. **cdn-waf**: 最初に WAF(ModSecurity)が中身を検査し、攻撃らしければ 403 で止めます。次に「同じ IP から 1 秒 20 回まで」のレート制限を数えます。商品ページはキャッシュの対象なので、30 秒以内に同じ URL が来ていれば、奥に行かずにここで返します(`X-Cache-Status: HIT`)。無ければ ingress に渡します。→ [仕組み-1](./01-cdn-waf)
 3. **ingress**: `Host` ヘッダの名前を見て、行き先(storefront)を決めます。backoffice なら IP も確かめます。→ [仕組み-2](./02-ingress-and-endpoints)
 4. **storefront**: Angular がサーバーの中で画面を組み立てます(SSR)。画面の「設計図」を api の CMS から取り、設計図に書かれた部品ごとに商品のデータも取ります。このときの api の住所は **内側の近道**(`API_INTERNAL_URL` = `http://api:3001`)で、cdn-waf も ingress も通りません。3000 ミリ秒以内に終わらなければ、あきらめて空の HTML を返します(フォールバック)。→ [仕組み-4](./04-storefront-ssr)・[仕組み-5](./05-headless-cms)

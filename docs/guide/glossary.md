@@ -123,17 +123,17 @@
 ### HPA {#hpa}
 - **一言でいうと**: 混み具合に合わせて、Pod の数を自動で増やしたり減らしたりする仕組み。
 - **たとえ**: 行列が伸びたら、自動でレジを開ける。
-- **ラボで見られる場所**: 本格版(任意)。[台数を増やして耐える](/exercises/13-perf-scale-out)。
+- **ラボで見られる場所**: ラボには入れていません(CPU の使用量を集める metrics-server が別に要るため。台数は manifest と手の操作で変えます)。[台数を増やして耐える](/exercises/13-perf-scale-out)。
 
 ### aspect {#aspect}
-- **一言でいうと**: 同じアプリ(同じイメージ)を、役割ごとに分けて動かすときの「役」の名前。api・backoffice・backgroundProcessing の 3 つ。
+- **一言でいうと**: 同じアプリ(同じイメージ)を、役割ごとに分けて動かすときの「役」の名前。ラボでは api・backoffice・backgroundProcessing の 3 つ(CCv2 にはほかに、ヘッドレスでは使わない従来型の画面用の accstorefront や、初期化・更新の作業用の admin もあります)。
 - **たとえ**: 同じ店員(イメージ)に、レジ係・事務係・倉庫係の名札(役)を付けて配置する。
 - **ラボで見られる場所**: 環境変数 `ASPECT=api|backoffice|backgroundProcessing`([main.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/main.js))。CCv2 の aspect に当たる。
 
 ### backgroundProcessing {#background-processing}
-- **一言でいうと**: 画面も API も持たず、裏で定期ジョブだけを動かす aspect。
+- **一言でいうと**: お客さん向けの画面や API を受け持たず、裏の仕事(定期ジョブ)を受け持つ aspect。ラボの worker は定期ジョブだけですが、CCv2 ではここで管理用の画面(hAC)も動きます。
 - **たとえ**: お店の奥の倉庫係。お客さんには会わないが、在庫の数を毎日合わせている。
-- **ラボで見られる場所**: worker(`ASPECT=backgroundProcessing`)。外に出すのは `/healthz`・`/metrics` だけ。
+- **ラボで見られる場所**: worker(`ASPECT=backgroundProcessing`)。入口(エンドポイント)を持たず外には出しません。Prometheus が中から `/metrics` を集めるだけです。
 
 ### CronJob(定期ジョブ) {#cronjob}
 - **一言でいうと**: 決まった間隔・時刻に自動で動く仕事。
@@ -308,11 +308,12 @@
 - **一言でいうと**: 利用者の名前とパスワードを送って、アクセストークンをもらう OAuth のもらい方。
 - **たとえ**: 受付で名前と合言葉を言うと、その場でリストバンドがもらえる。
 - **ラボで見られる場所**: `grant_type=password&client_id=storefront&username=alice&password=password`。
+- **注意**: 仕組みが分かりやすいのでラボで使っていますが、今の OAuth の安全の指針(RFC 9700)では使わないことになっており、OAuth 2.1 の案からも外されています。SAP Commerce Cloud でも、公開クライアント(Composable Storefront など)は「認可コード + PKCE」でトークンをもらう形が今の標準です。新しく作るときはそちらを選びます。
 
 ### 公開クライアント {#public-client}
 - **一言でいうと**: 秘密の鍵(client_secret)を持たない OAuth のクライアント。ブラウザで動くアプリは中身を誰でも見られるので、秘密を持てない。
 - **たとえ**: 誰でも読める掲示板に貼った申込書。合言葉は書けない。
-- **ラボで見られる場所**: `client_id=storefront`(ほかのクライアントは 401 `invalid_client`)。
+- **ラボで見られる場所**: `client_id=storefront`(ほかのクライアントは 401 `invalid_client`)。ラボは公開クライアントでパスワードグラントを受けていますが、実際の SAP Commerce Cloud では公開クライアントは「認可コード + PKCE」でしかトークンをもらえません([パスワードグラント](#password-grant)の注意)。
 
 ### アクセストークン {#access-token}
 - **一言でいうと**: API を呼ぶときに見せる「入ってよい」の印。期限がある。`Authorization: Bearer <トークン>` の形で付ける。
@@ -469,7 +470,7 @@
 - **ラボで見られる場所**: `ErrorBudgetBurnPage`(5 分窓 かつ 1 時間窓)。
 
 ### p95(パーセンタイル) {#p95}
-- **一言でいうと**: 100 件を速い順に並べたとき、遅い方から 5 件目の値。ほとんどの人が体験する「遅め」の速さ。
+- **一言でいうと**: 100 件を速い順に並べたとき、95 件目の値(これより遅いのは 5 件だけ)。ほとんどの人が体験する「遅め」の速さ。
 - **たとえ**: クラスで 95 番目に速い人のタイム。平均より実感に近い。
 - **ラボで見られる場所**: `job:http_request_duration_seconds:p95_rate5m`。
 
@@ -730,7 +731,7 @@
 
 ### バースト {#burst}
 - **一言でいうと**: レート制限の中で、短い時間なら少しまとめて受け付ける余裕。
-- **たとえ**: 「普段は 1 人ずつ、最初だけ 5 人までまとめて入れる」。
+- **たとえ**: 「普段は 1 秒に 1 人ずつ。ただし急に来ても、あと 5 人までは待たせずに入れる」。ラボの `burst=5` なら、続けて送ると 6 回目までは通り、7 回目から 429 です。
 - **ラボで見られる場所**: トークンの発行の `burst=5`(ingress)、全体の `burst=80`(cdn-waf)。
 
 ### 429 {#http-429}

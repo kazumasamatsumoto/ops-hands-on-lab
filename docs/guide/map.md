@@ -81,7 +81,7 @@
 | ラボ | CCv2 / Composable Storefront で当たるもの | ラボで見る場所 |
 | --- | --- | --- |
 | cdn-waf | 外部の CDN / WAF(例: CloudFront + AWS WAF) | [cdn-waf/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/cdn-waf/default.conf.template) |
-| ingress のホスト名ごとの振り分け(www・api・backoffice) | Cloud Portal の「エンドポイント」 | [ingress/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/default.conf.template)・[k8s/generated/base/ingress.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/ingress.yaml) |
+| ingress のホスト名ごとの振り分け(www・api・backoffice) | Cloud Portal の「エンドポイント」(Cloud Portal にはエンドポイントごとの簡易の WAF もあり、回数制限や閉じるパスを決められます。ラボの ingress のトークンの回数制限・閉じる口はこれに近い) | [ingress/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/default.conf.template)・[k8s/generated/base/ingress.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/ingress.yaml) |
 | ingress の IP 制限(`BACKOFFICE_IP_ALLOWLIST`・`ipFilters.office`) | エンドポイントの「IP フィルタ」 | [ingress/40-ip-filter.sh](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/40-ip-filter.sh)・[manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) |
 | storefront | JS Storefront(SSR) | [apps/web/src/server.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/server.ts) |
 | api の `/occ/v2/samplestore/...` | OCC の REST API(`samplestore` は baseSiteId) | [apps/api/src/aspects/api.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/aspects/api.js) |

@@ -252,7 +252,7 @@ kubectl -n lab scale deploy/api --replicas=3
 軽量版(docker compose)には Pod も ReplicaSet もありません。近い物は次のとおりです。
 
 ```bash
-docker compose ps          # STATUS の (healthy) は、Dockerfile の HEALTHCHECK(/readyz)の結果
+docker compose ps          # STATUS の (healthy) は、HEALTHCHECK の結果(api・backoffice・worker は /readyz、storefront は /healthz)
 docker inspect --format '{{.State.OOMKilled}}' lab-api-1   # メモリ上限で殺されたか
 ```
 

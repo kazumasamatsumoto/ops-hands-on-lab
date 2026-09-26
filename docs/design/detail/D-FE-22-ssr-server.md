@@ -23,7 +23,7 @@
 | 前提 | 内容 |
 | --- | --- |
 | ポート | 4000(Service 名・compose のサービス名は `storefront`) |
-| 前段 | cdn-waf → ingress(www.lab.localhost)の後ろにいる。前段が付ける `X-Forwarded-For`・`X-Forwarded-Host`・`X-Forwarded-Port`・`X-Forwarded-Proto` を信じるよう `trustProxyHeaders` に登録する(登録しないと Angular が安全のため CSR に切り替える) |
+| 前段 | cdn-waf → ingress(www.lab.localhost)の後ろにいる。前段が付ける `X-Forwarded-For`・`X-Forwarded-Host`・`X-Forwarded-Port`・`X-Forwarded-Proto`(本格版の ingress-nginx が付ける `X-Forwarded-Scheme` も)を信じるよう `trustProxyHeaders` に登録する(登録しないと Angular が安全のため CSR に切り替える) |
 | Host の許可 | Angular SSR は知らない Host ヘッダを 400 で断る。`angular.json` の `allowedHosts` と環境変数 `NG_ALLOWED_HOSTS`(compose・manifest とも `www.lab.localhost,storefront,localhost,127.0.0.1`)で許す |
 | イメージ | `node:24.21.0-bookworm-slim` から作る `lab/web:local`。ヘルスチェックは `/healthz`(10 秒ごと、3 回) |
 

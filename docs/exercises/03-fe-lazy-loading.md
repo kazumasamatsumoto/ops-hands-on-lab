@@ -46,6 +46,8 @@ Composable Storefront の案件でも、画面の機能(部品)を足すほど J
    ```
 
    `Initial`(最初に読む物)と `Lazy`(後から読む物)に分かれて表示されます。
+   実際の表示は各行の頭に `#10 5.352` のようなビルドの段の番号と経過秒が付きます(下の「何が見えたら成功か」では省いています)。後ろに `server.mjs` などサーバー用の一覧も続きますが、ここではブラウザ用(最初の一覧)だけを見ます。
+   `--no-cache-filter build` は「前に同じ中身でビルドしたことがあっても、ビルドの段をやり直す」指定です。これが無いと、2 回目以降はビルドが省かれ(`CACHED`)、何も表示されません。
 
 2. **予算をわざと下げて、ビルドを落とす**。`apps/web/angular.json` の `"maximumError": "450kB"` を `"300kB"` に書き換えます(エディタで直しても、次のコマンドでも同じです)。
 
@@ -78,7 +80,7 @@ Composable Storefront の案件でも、画面の機能(部品)を足すほど J
    ```
 
    ```bash
-   docker build --target build --progress=plain apps/web 2>&1 | grep -A6 'Initial chunk files'
+   docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | grep -A6 'Initial chunk files'
    cp /tmp/app.routes.ts.bak apps/web/src/app/app.routes.ts    # 必ず元に戻す
    ```
 

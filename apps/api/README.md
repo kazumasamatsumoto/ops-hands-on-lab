@@ -1,7 +1,7 @@
 # api(サンプルストアのサーバー側)
 
 Node.js 24 + Express 5 + PostgreSQL。**1 つのイメージ**を、環境変数 `ASPECT` で 3 つの役に切り替えて動かします。
-CCv2 の aspect(api・backoffice・backgroundProcessing)と同じ考え方です。
+CCv2 の aspect(そのうちヘッドレスで主に使う api・backoffice・backgroundProcessing)と同じ考え方です。
 **わざと壊すスイッチ(カオス)** が付いていて、遅延・エラー・メモリ不足・認可の穴・SQL インジェクションの穴・定期ジョブの失敗を、演習の中で起こせます。
 
 | `ASPECT` | 役割 | CCv2 で当たるもの | 外に出すもの |
@@ -72,7 +72,8 @@ curl -X POST http://api.lab.localhost:18080/authorizationserver/oauth/token \
 ```
 
 - 受け付けるクライアントは `storefront` だけ(秘密の鍵を持たない公開クライアント)。ほかは 401 `invalid_client`。
-- 名前かパスワードが違えば 400 `invalid_grant`。何度失敗してもロックしません。ログインの回数制限は ingress が受け持ちます(軽量版は `ingress/default.conf.template` の `limit_req zone=login`、本格版は Ingress `api-ratelimit-1` の注釈 `limit-rps`。IP ごとに 1 秒 1 回、最初の 5 回はまとめて可。超えると 429)。
+- パスワードグラントは仕組みを見やすくするための学習用の選択です。今の OAuth の安全の指針(RFC 9700)では使わないことになっており、SAP Commerce Cloud でも公開クライアントは「認可コード + PKCE」でトークンをもらうのが今の標準です。
+- 名前かパスワードが違えば 400 `invalid_grant`。何度失敗してもロックしません。ログインの回数制限は ingress が受け持ちます(軽量版は `ingress/default.conf.template` の `limit_req zone=login`、本格版は Ingress `api-ratelimit-1` の注釈 `limit-rps`。IP ごとに 1 秒 1 回。`burst=5` の余裕があるので、続けて送ると 6 回目までは通り、7 回目から 429)。
 - トークンは中身の無いランダムな文字列です(JWT ではありません)。DB には SHA-256 の値と期限(15 分)だけを置くので、api を何台にしても同じトークンが通ります。
 
 ### CORS
@@ -91,7 +92,7 @@ curl -X POST http://api.lab.localhost:18080/authorizationserver/oauth/token \
 
 ## ASPECT=backgroundProcessing(worker・定期ジョブ)
 
-外に出すのは `/healthz`・`/metrics` だけです(`/readyz`・`/admin/chaos` は中からだけ使う)。
+エンドポイント(入口)を持たないので、外からは何も呼べません。`/healthz`・`/readyz`・`/metrics`・`/admin/chaos` は、Prometheus や `tools/chaos.sh` が中から使います。
 
 | ジョブ | 間隔 | 何をするか |
 |---|---|---|

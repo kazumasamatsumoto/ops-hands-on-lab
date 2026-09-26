@@ -23,7 +23,7 @@
 | ホスト名 | `www.lab.localhost`・`api.lab.localhost`・`backoffice.lab.localhost`。知らないホスト名(例: `http://localhost:18080`)は cdn-waf が 404 で正しい入口を案内する |
 | 内部のネットワーク | Docker のネットワーク `lab_default` を `172.30.89.0/24` に固定。cdn-waf の IP は `172.30.89.10` に固定 |
 | 社外の代わり | ネットワーク `lab_outside`(`172.30.90.0/24`)。cdn-waf だけがつながる。ここから来た通信は「社外」 |
-| 名前の解決 | cdn-waf・ingress とも Docker の DNS(`127.0.0.11`)で行き先をリクエストのたびに調べる。行き先が未起動でも入口は起動でき、その間は 502 |
+| 名前の解決 | cdn-waf・ingress とも Docker の DNS(`127.0.0.11`)で行き先を起動時ではなく使うときに調べる(ingress は調べた結果を 10 秒だけ覚える)。行き先が未起動でも入口は起動でき、その間は 502 |
 
 ## 3. 全体像 {#s3}
 | ホスト名(エンドポイント) | 行き先 | cdn-waf のキャッシュ | ingress の扱い |
@@ -77,7 +77,7 @@
 ### 4.6 タイムアウトと見守り用の口 {#s4-6}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | cdn-waf・ingress とも、奥への接続は 3 秒、応答の読み取りは 30 秒まで待つ。`/metrics`(全エンドポイント)と、api・backoffice の `/admin/`・`/readyz` は ingress で外から 403 にする(本格版は `<名前>-blocked` の Ingress で、許す範囲を `127.0.0.1/32` だけにして 403 にする)。Prometheus は各サービスを中から直接見る |
+| 決定 | cdn-waf と軽量版の ingress は、奥への接続は 3 秒、応答の読み取りは 30 秒まで待つ(本格版の ingress-nginx は既定のままで、接続 5 秒・読み取り 60 秒)。`/metrics`(全エンドポイント)と、api・backoffice の `/admin/`・`/readyz` は ingress で外から 403 にする(本格版は `<名前>-blocked` の Ingress に注釈 `denylist-source-range: "0.0.0.0/0"` を付け、どこから来ても 403 にする)。Prometheus は各サービスを中から直接見る |
 | 理由 | 奥が固まったときに入口の手まで全部ふさがらないようにする。指標やカオスの切り替えは内部の情報・機能なので外に見せない |
 | 実物 | [ingress/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/default.conf.template)・[k8s/generated/base/ingress.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/ingress.yaml) |
 
@@ -85,7 +85,7 @@
 | 項目 | 内容 |
 | --- | --- |
 | 決定 | cdn-waf(クラスタの外): キャッシュ・WAF・全体のレート制限・セキュリティヘッダ。ingress(クラスタの入口): ホスト名での振り分け・IP フィルタ・ログインの回数制限・中の人だけの口を閉じる。cdn-waf は振り分けない、ingress はためない・WAF をしない、と役割を重ねない。本格版でも cdn-waf はクラスタの外のコンテナ(軽量版と同じイメージ・同じ設定ファイル)として置き、行き先 `INGRESS_UPSTREAM` だけを kind のノードの 80 番(ingress-nginx)に変える(`k8s/up.sh` が `INGRESS_UPSTREAM=lab-control-plane:80` で起動する。コンテナ名 `lab-cdn-waf`、ネットワーク `lab-kind` 172.30.91.0/24 の 172.30.91.10) |
-| 理由 | 役割と持ち主が違う。CCv2 では CDN・WAF はお客さんが別に契約する外の盾、エンドポイントと IP フィルタは Cloud Portal の設定。たとえると、ショッピングモールの警備員(cdn-waf)と、お店の受付係(ingress) |
+| 理由 | 役割と持ち主が違う。CCv2 では CDN・WAF はお客さんが別に用意する外の盾、エンドポイントと IP フィルタは Cloud Portal の設定(Cloud Portal にもエンドポイントごとの簡易な WAF があり、IP ごとの回数制限と閉じるパスを設定できる。ラボの ingress の回数制限と閉じるパスはこれに近い。外に CDN・WAF を置く場合は、その回数制限は使わないのが基本)。たとえると、ショッピングモールの警備員(cdn-waf)と、お店の受付係(ingress) |
 | 却下した案 | 1 段にまとめる(第 1 版の edge): 部品は減るが、「CDN を替えたら IP 制限も消えた」のような、持ち主の違いから来る事故が体験できない |
 | 実物 | [cdn-waf/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/cdn-waf/default.conf.template)(先頭の説明)・[ingress/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/default.conf.template) |
 

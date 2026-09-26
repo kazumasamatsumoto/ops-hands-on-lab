@@ -63,7 +63,7 @@
 ### 4.4 ヘルスチェックと再起動 {#s4-4}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | 軽量版: api・backoffice・worker は `/readyz` を 10 秒ごと、storefront は `/healthz` を 10 秒ごとに確かめ、`restart: unless-stopped` で落ちたら再起動。storefront は api が healthy になってから起動する。本格版(api・backoffice・worker): readiness = `/readyz`(5 秒ごと、3 回失敗で振り分けから外す)、liveness = `/healthz`(20 秒待ってから 10 秒ごと、3 回失敗で再起動)。storefront は readiness・liveness とも `/healthz` |
+| 決定 | 軽量版: api・backoffice・worker は `/readyz` を 10 秒ごと、storefront は `/healthz` を 10 秒ごとに確かめ、`restart: unless-stopped` で落ちたら再起動。storefront は api が healthy になってから起動する。本格版(api・backoffice・worker): 起動の間は startup = `/healthz`(2 秒ごと、最大 60 回 = 約 2 分待つ。通るまで liveness は始まらない)、readiness = `/readyz`(5 秒ごと、2 回続けて失敗で振り分けから外す)、liveness = `/healthz`(10 秒ごと、3 回続けて失敗で再起動)。止めるときは `preStop` で 5 秒待ってから合図を送る。storefront は startup・readiness・liveness とも `/healthz` |
 | 理由 | 「客を送らない」と「作り直す」を別の基準にする。DB が落ちたときは振り分けから外すだけにして、再起動の連鎖を起こさない |
 | 実物 | [apps/api/Dockerfile](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/Dockerfile)(`HEALTHCHECK`)・[k8s/generated/base/api.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/api.yaml) |
 

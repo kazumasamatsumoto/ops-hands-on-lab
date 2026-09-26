@@ -74,7 +74,7 @@ GET /occ/v2/samplestore/users/current/orders/{code}   (Authorization: Bearer <�
 | 状態 | 条件 | 本文 |
 | --- | --- | --- |
 | 200 | 持ち主が本人 | `{"code","placed","status","statusDisplay","total":{currencyIso,value,formattedValue},"user":{uid,name},"entries":[{"entryNumber","product":{code,name,url},"quantity","basePrice","totalPrice"}]}` |
-| 401 | トークンが無い(`UnauthorizedError`)・知らない・期限切れ(`InvalidTokenError`) | `{"errors":[{"type":"InvalidTokenError","message":"…"}]}` |
+| 401 | トークンが無い(`UnauthorizedError`)・知らない・期限切れ(`InvalidTokenError`) | `{"errors":[{"type":"UnauthorizedError" または "InvalidTokenError","message":"…"}]}` |
 | 404 | 注文が無い、**または持ち主が別の人** | `{"errors":[{"type":"UnknownIdentifierError","message":"注文が見つかりません"}]}`(同じ本文) |
 
 返事にはどの場合も `Cache-Control: no-store` を付けます。cdn-waf は `Authorization` があるリクエストを最初からためませんが、ヘッダでも二重に止めます。
@@ -131,7 +131,7 @@ curl -s -H "Authorization: Bearer $TOKEN" http://api.lab.localhost:18080/occ/v2/
 | # | 内容 |
 | --- | --- |
 | 1 | 注文番号が連番なので、推測されやすい。番号を推測しにくい形(ランダムな ID)にするか |
-| 2 | パスワードグラントは、利用者のパスワードをアプリが直接受け取る方式。認可コード(+ PKCE)の方式に切り替えるか |
+| 2 | パスワードグラントは、利用者のパスワードをアプリが直接受け取る方式。OAuth 2.0 のセキュリティの最新の指針(RFC 9700)は使わないよう求めており、策定中の OAuth 2.1 では仕様から外されている。ラボでは仕組みを見やすくするために使っているだけで、本番の新しい作りでは認可コード(+ PKCE)の方式に切り替えるか |
 | 3 | 15 分で切れたとき、利用者にもう一度ログインさせるか、リフレッシュトークンで延ばすか |
 
 ## 8. レビュー観点 {#s8}

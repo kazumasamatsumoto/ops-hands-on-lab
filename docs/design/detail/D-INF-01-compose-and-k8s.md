@@ -53,10 +53,10 @@
 ### 4.1 ネットワークとボリューム {#s4-1}
 | 項目 | 値 | 理由 |
 | --- | --- | --- |
-| ネットワーク `default` | `172.30.89.0/24`、ゲートウェイ `172.30.89.1` | ingress の IP フィルタ(`BACKOFFICE_IP_ALLOWLIST` の既定 `127.0.0.1/32 172.30.89.0/24`)で番号の範囲を使うため固定 |
+| ネットワーク `default` | `172.30.89.0/24`、ゲートウェイ `172.30.89.1` | ingress の IP フィルタ(`BACKOFFICE_IP_ALLOWLIST` の既定 `127.0.0.1/32 172.30.89.0/24 172.30.91.0/24`。最後の範囲は本格版用で、manifest の `office` とそろえてある)で番号の範囲を使うため固定 |
 | cdn-waf の番号 | `172.30.89.10`(固定) | ingress が「この IP から来た `X-Forwarded-For` だけ信じる」(`CDN_WAF_IP`)ため。k6 と E2E もこの番号で cdn-waf に届く |
 | ネットワーク `outside` | `172.30.90.0/24` | 「社外(インターネット)」の代わり。cdn-waf だけがつながる。ここから backoffice を開くと 403 |
-| ホストのポート | `127.0.0.1:18080` と `[::1]:18080` だけ | 同じ LAN の別の PC から届かないようにする |
+| ホストのポート | お店の入口(cdn-waf)は `127.0.0.1:18080` と `[::1]:18080` だけ | 同じ LAN の別の PC からお店に届かないようにする。ただし観測の 4 つ(13000・19090・19093・19094)は軽量版では待ち受けの住所を絞っていない(`"19090:9090"` の形)ので、同じ LAN から見える場合がある。本格版は 4.4 のとおり 127.0.0.1 だけ |
 | ボリューム | `db-data`・`prometheus-data`・`grafana-data`・`loki-data` | `docker compose down` では残り、`down -v` で消える |
 
 ### 4.2 起動と停止 {#s4-2}
@@ -71,12 +71,12 @@
 ### 4.3 本格版の Pod(k8s/generated/base) {#s4-3}
 | 部品 | 種類 | 台数(base) | requests(CPU / メモリ)/ limits(メモリ) | probe | 外への出口 |
 | --- | --- | --- | --- | --- | --- |
-| storefront | Deployment | 2 | 100m / 256Mi / 384Mi | readiness `/healthz`(5 秒、3 回)、liveness `/healthz`(初回 20 秒後、10 秒、3 回) | Ingress `www` |
-| api | Deployment(`ASPECT=api`) | 2 | 50m / 96Mi / 256Mi | readiness `/readyz`(5 秒、3 回)、liveness `/healthz`(初回 20 秒後、10 秒、3 回) | Ingress `api` |
+| storefront | Deployment | 2 | 100m / 256Mi / 384Mi | startup `/healthz`(2 秒ごと、60 回まで)、readiness `/healthz`(5 秒ごと、2 回で外す)、liveness `/healthz`(10 秒ごと、3 回で再起動) | Ingress `www` |
+| api | Deployment(`ASPECT=api`) | 2 | 50m / 96Mi / 256Mi | startup `/healthz`(2 秒ごと、60 回まで)、readiness `/readyz`(5 秒ごと、2 回で外す)、liveness `/healthz`(10 秒ごと、3 回で再起動) | Ingress `api` |
 | backoffice | Deployment(`ASPECT=backoffice`) | 1 | 50m / 96Mi / 192Mi | 同上 | Ingress `backoffice`(IP フィルタ) |
 | worker | Deployment(`ASPECT=backgroundProcessing`) | 1 | 50m / 96Mi / 192Mi | 同上 | なし(Service は指標の収集用) |
 
-- どれも `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)、停止の猶予 20 秒。
+- どれも `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)、停止の猶予 20 秒(止める前に `preStop` で 5 秒待つ)。
 - 秘密の値(`PGPASSWORD`・`BACKOFFICE_PASSWORD`)は Secret `lab-secrets` から `secretKeyRef` で読みます。manifest には鍵の名前だけを書き、値は書きません。
 - db・Solr・観測・ingress-nginx の定義は render.mjs の対象外で、[k8s/platform/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/platform)(Namespace・Secret・DB・Solr `solr:9.10.1-slim`)、[k8s/observability/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/observability)(指標・ログ・トレース・Grafana)、[k8s/vendor/ingress-nginx/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/vendor/ingress-nginx)(版を固定した写し)に置きます。
 - 本格版では manifest の `tracing.otlpEndpoint` から、4 つの Deployment に `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` が付きます(軽量版には付けません)。
@@ -115,7 +115,7 @@
 | `aspects[].secretEnv` | `["PGPASSWORD"]` | `env[].valueFrom.secretKeyRef`(Secret `lab-secrets`) |
 | `endpoints[]` | `www`・`api`・`backoffice` | Ingress `www`・`api`・`backoffice`(ホスト名 → Service) |
 | `endpoints[].ipFilter` | `office` | 注釈 `nginx.ingress.kubernetes.io/allowlist-source-range: "127.0.0.1/32,172.30.89.0/24,172.30.91.0/24"` |
-| `endpoints[].blockedPaths` | `/admin`・`/metrics`・`/readyz` | Ingress `<名前>-blocked`(許す範囲を `127.0.0.1/32` だけにして外から 403) |
+| `endpoints[].blockedPaths` | `/admin`・`/metrics`・`/readyz` | Ingress `<名前>-blocked`(注釈 `nginx.ingress.kubernetes.io/denylist-source-range: "0.0.0.0/0"` で、どこから来ても 403) |
 | `endpoints[].rateLimits[]` | `{path: /authorizationserver/oauth/token, rps: 1, burst: 5}` | Ingress `api-ratelimit-1`(注釈 `limit-rps: "1"`・`limit-burst-multiplier: "5"`) |
 | `environments.<d1\|s1\|p1>` | 台数・`cdnCache`・`ipFilterOverrides`・`searchProvider`・`env` | `k8s/generated/envs/<環境>/kustomization.yaml`(kustomize のオーバーレイ)と `patches/*.yaml` |
 

@@ -16,7 +16,7 @@
 - **含む**: 画面の一覧、描画方式(SSR / CSR)、CMS 駆動の描画、SSR で守る書き方、SSR の待ち時間と逃げ道、JS の予算と遅延読み込み、ログインの印の置き場所、api の呼び先(SSR とブラウザ)。
 - **含まない**: 画面のデザイン、多言語、CMS の編集画面(ラボでは backoffice でバナーの文言だけを変えられる)。
 
-画面は 6 つです(URL の形は CCv2 の Composable Storefront に合わせています)。
+画面は 7 つです(`/p/`・`/c/` の URL の形は SAP Commerce のアクセラレーター由来で、Composable Storefront も互換のために受け付けます。Composable Storefront の既定の形は `/product/…`・`/category/…` です)。
 
 | URL | 中身 | CMS 駆動 |
 | --- | --- | --- |

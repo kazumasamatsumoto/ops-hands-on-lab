@@ -153,7 +153,7 @@ JSON の見出し: 冬のノート祭り
 **手順 6**: 知らない部品は描かれず、警告のログが出ます。**画面は落ちず、知っている部品は全部描かれています**。
 
 ```text
-{"time":"...","service":"storefront","level":"warn","event":"cms_unknown_component","typeCode":"MysteryWidgetComponent","uid":"LabMysteryWidget","pageUid":"homepage","slotId":"Section2Slot-Homepage"}
+{"time":"...","service":"storefront","level":"warn","event":"cms_unknown_component","url":"http://www.lab.localhost/?t=mystery","typeCode":"MysteryWidgetComponent","uid":"LabMysteryWidget","pageUid":"homepage","slotId":"Section2Slot-Homepage"}
    2 data-cms-type="CMSParagraphComponent"
    1 data-cms-type="NavigationComponent"
    2 data-cms-type="ProductCarouselComponent"

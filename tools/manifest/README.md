@@ -47,7 +47,7 @@ k8s/generated/
 | `storefront.ssr.timeoutMs` | `3000` | SSR をあきらめるまでの時間 | 環境変数 `SSR_TIMEOUT_MS` |
 | `storefront.env` | `API_INTERNAL_URL` など | そのほかの環境変数 | `env` |
 | `storefront.resources` | `cpu`・`memory`・`memoryLimit` | 予約する CPU・メモリ(requests)と、メモリの上限(limits) | `resources` |
-| `aspects[].name` | `api`・`backoffice`・`backgroundProcessing` | aspect の名前(CCv2 の aspect と同じ 3 つ) | 環境変数 `ASPECT`、ラベル `lab/aspect` |
+| `aspects[].name` | `api`・`backoffice`・`backgroundProcessing` | aspect の名前(CCv2 の aspect のうち、ヘッドレスで主に使う 3 つ。CCv2 にはほかに accstorefront・admin もある) | 環境変数 `ASPECT`、ラベル `lab/aspect` |
 | `aspects[].service` | `api`・`backoffice`・`worker` | Deployment・Service の名前 | 同左 |
 | `aspects[].port` | `3001` | 待ち受けるポート | `containerPort`・Service |
 | `aspects[].replicas` | `2` | 台数(環境で上書きされます) | `spec.replicas` |

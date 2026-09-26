@@ -85,7 +85,7 @@ Grafana ◀── Prometheus・Loki(本格版は + Tempo)(ダッシュボード�
 ### 4.7 ログ {#s4-7}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | 全部品(cdn-waf・ingress も含む)が 1 行 1 JSON で標準出力に出す。Alloy が Docker のソケット(読むだけ)からラボのコンテナ(compose の project が `lab`)のログを読み、`service`・`container`・`level` のラベルを付けて Loki へ送る。見守りの定期アクセスはログに出さない。トレースが動いているときは、アプリのログに `trace_id`・`span_id` を入れる |
+| 決定 | アプリ(storefront・api・backoffice・worker)と入口(cdn-waf・ingress のアクセスログ)は 1 行 1 JSON で標準出力に出す(db や観測の道具は各製品の形のまま)。Alloy が Docker のソケット(読むだけ)からラボのコンテナ(compose の project が `lab`)のログを読み、`service`・`container`・`level` のラベルを付けて Loki へ送る。見守りの定期アクセスはログに出さない。トレースが動いているときは、アプリのログに `trace_id`・`span_id` を入れる |
 | 理由 | 1 か所で、部品をまたいで絞り込める。`X-Request-Id`(cdn-waf が付ける)と `trace_id` で、入口からアプリまで同じリクエストを追える |
 | 実物 | [config.alloy](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/alloy/config.alloy)・[loki.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/loki/loki.yml)・[apps/api/src/log.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/log.js) |
 
@@ -112,7 +112,7 @@ Grafana ◀── Prometheus・Loki(本格版は + Tempo)(ダッシュボード�
 | 緊急の基準 | 14.4 倍 | 1 時間で予算の 2%: 0.02 × 720 時間 ÷ 1 時間 = 14.4。このままだと 30 日 ÷ 14.4 ≒ **約 2 日**で使い切る |
 | 警告の基準 | 6 倍 | 6 時間で予算の 5%: 0.05 × 720 ÷ 6 = 6。このままだと 30 日 ÷ 6 = **5 日**で使い切る |
 | 例: エラー率 50% | バーンレート 500 | 0.5 ÷ 0.001 = 500 → 43.2 分 ÷ 500 ≒ 約 5 分で 1 か月分を使い切る |
-| 定期ジョブ | 最後の成功から 300 秒以内 | 間隔 60 秒なら、4 回続けて失敗・停止すると鳴る |
+| 定期ジョブ | 最後の成功から 300 秒以内 | 間隔 60 秒なら、およそ 5 回(5 分ぶん)続けて失敗・停止すると鳴る |
 
 ## 6. 配下の詳細設計書 {#s6}
 - [D-SRE-02 SLO とバーンレートのアラート](/design/detail/D-SRE-02-slo-burn-rate)

@@ -59,6 +59,7 @@
 | 決定 | `POST /authorizationserver/oauth/token` に `grant_type=password&client_id=storefront&username=&password=`(フォームの形)を送ると、`{access_token, token_type:"bearer", expires_in:900}` を返す。受けるクライアントは `storefront`(秘密の鍵を持たない公開クライアント)だけ。トークンは中身の無いランダムな文字列で、DB には SHA-256 の値・持ち主・期限だけを置く。以降は `Authorization: Bearer <トークン>`。無い・知らない・期限切れは 401。失敗が続いてもロックはしない(回数の制限は ingress で行う) |
 | 理由 | 期限を 15 分にして、盗まれたときの被害の時間を限る。DB にハッシュだけを置くので、DB が漏れてもそのまま使えるトークンは出ない。api を何台にしても同じトークンが通る。ロックは「他人の会員名で失敗を重ねて締め出す」嫌がらせにも使われる |
 | 却下した案 | 期限なしのトークン: 盗まれたら永遠に使える。署名付きの自己完結トークン(JWT): 取り消し(ログアウト)が難しく、署名鍵の管理も要る |
+| 注意 | パスワードグラントは、仕組みを短い手順で見せるための**学習用の選択**です。OAuth 2.0 のセキュリティの現行の指針(RFC 9700)では使ってはいけないとされ、OAuth 2.1 の案からも外されています。Composable Storefront も新しい SAP Commerce Cloud(2211-jdk21 以降)では認可コードの流れ(ログイン画面を認可サーバー側に置く形)が既定で、パスワードの流れは古い 2211.xx 向けの互換として残っているだけです。新しく作る本番では認可コード + PKCE を選びます([セキュリティ方式 7 章](/design/architecture/10-security#s7)) |
 | 実物 | [occ/oauth.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/oauth.js) |
 
 ### 4.3 認可 {#s4-3}

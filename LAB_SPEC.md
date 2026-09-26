@@ -105,7 +105,7 @@ obs: Prometheus(指標)・Alertmanager(通知)・Grafana(ダッシュボード)�
 ## 全体の構成(軽量版・本格版で同じ形)
 ```
 ブラウザ
-  ↓ http://www.lab.localhost:18080 など(*.localhost はどの PC でも 127.0.0.1 になる。Safari は hosts に書く必要がある場合あり)
+  ↓ http://www.lab.localhost:18080 など(*.localhost は Chrome・Edge・Firefox・curl では設定なしで 127.0.0.1 になる。Safari などは hosts に書く必要がある場合あり)
 [cdn-waf]  … クラスタの外の CDN + WAF の役(nginx + ModSecurity)。キャッシュ・WAF・全体のレート制限・セキュリティヘッダ
   ↓
 [ingress]  … 入口の振り分け。ホスト名で 3 つのエンドポイントに分ける。エンドポイントごとの IP 制限
@@ -147,12 +147,12 @@ obs: Prometheus(指標)・Alertmanager(通知)・Grafana(ダッシュボード)�
   - `GET /occ/v2/samplestore/products/{code}?fields=` → 商品 1 件(FULL は description・categories・classifications も)。無ければ 404 `{errors:[{type:"UnknownIdentifierError",message}]}`。
   - `GET /occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage` / `?pageType=ProductPage&code=...` / `?pageType=CategoryPage&code=...` → `{uid,name,template,title,contentSlots:{contentSlot:[{slotId,position,components:{component:[{uid,typeCode,name,...属性}]}}]}}`。部品の型(typeCode): `SimpleBannerComponent`(headline,content,media.url,urlLink)、`CMSParagraphComponent`(content)、`ProductCarouselComponent`(title,productCodes)、`ProductDetailsComponent`(商品詳細の本体。属性なし)、`SearchBoxComponent`(placeholder)、`NavigationComponent`(links)。`CMSParagraphComponent` の content は HTML の断片として扱い、storefront は Angular のサニタイズを通して描く。
   - `GET /occ/v2/samplestore/users/current/orders` → `{orders:[{code,placed,status,total:{value,formattedValue},entries:[{product:{code,name},quantity,totalPrice:{formattedValue}}]}]}`(Bearer 必須)。`GET /occ/v2/samplestore/users/current/orders/{code}`(自分の注文でなければ 404。`idorBug` で確かめなくなる)。
-  - `POST /authorizationserver/oauth/token`(`application/x-www-form-urlencoded`。`grant_type=password&client_id=storefront&username=&password=`)→ `{access_token,token_type:"bearer",expires_in:900}`。クライアント `storefront`(公開クライアント、ROLE_CLIENT 相当)だけ受ける。失敗は 400/401 `{error:"invalid_grant"}`。
+  - `POST /authorizationserver/oauth/token`(`application/x-www-form-urlencoded`。`grant_type=password&client_id=storefront&username=&password=`)→ `{access_token,token_type:"bearer",expires_in:900}`。クライアント `storefront`(公開クライアント、ROLE_CLIENT 相当)だけ受ける。失敗はパスワード違いが 400 `{error:"invalid_grant"}`、知らないクライアントが 401 `{error:"invalid_client"}`。パスワードグラントは学習用の選択(今の OAuth の指針 RFC 9700 では使わない。SAP Commerce Cloud の公開クライアントは認可コード + PKCE が標準)であることを、ドキュメントに書き添える。
   - `GET /medias/{code}.svg`(商品画像。長くキャッシュしてよい `Cache-Control: public, max-age=86400`)。
   - CORS: `Origin` が `CORS_ALLOWED_ORIGINS`(既定 `http://www.lab.localhost:18080`)に一致するときだけ `Access-Control-Allow-Origin` を返す(CCv2 の corsfilter の設定と同じ考え方)。
   - `/healthz`・`/readyz`・`/metrics`、カオス `GET/POST /admin/chaos`(外には出さない。ingress で遮断)。カオスは第 1 版と同じ(latencyMs・errorRate・leakMb・idorBug・sqliBug。sqliBug は検索の `query` に効く)。
 - ASPECT=backoffice: `GET /backoffice/` で管理画面(サーバーで描く HTML。ログイン `admin`/`admin`、商品の価格・在庫の変更、トップのバナーの文言の変更)。変更は同じ DB に入り、storefront に反映される(キャッシュが効いている間は反映が遅れる → キャッシュの演習)。
-- ASPECT=backgroundProcessing(worker): 外に出すポートは `/metrics`・`/healthz` だけ。定期ジョブ 2 本: `stockImportJob`(60 秒ごと、在庫を少し変える = 基幹からの在庫連携の代わり)、`searchIndexJob`(60 秒ごと。solr のときは Solr に全件を入れ直す。db のときは何もしないで成功を記録)。指標 `cronjob_runs_total{job,result}`・`cronjob_last_success_timestamp_seconds{job}`。カオス `CHAOS_CRON_FAIL=true` でジョブを失敗させられる。
+- ASPECT=backgroundProcessing(worker): 外には出さない(エンドポイントを持たない。`/metrics`・`/healthz` は Prometheus などが中から使う)。定期ジョブ 2 本: `stockImportJob`(60 秒ごと、在庫を少し変える = 基幹からの在庫連携の代わり)、`searchIndexJob`(60 秒ごと。solr のときは Solr に全件を入れ直す。db のときは何もしないで成功を記録)。指標 `cronjob_runs_total{job,result}`・`cronjob_last_success_timestamp_seconds{job}`。カオス `CHAOS_CRON_FAIL=true` でジョブを失敗させられる。
 - DB の表は起動時に作る。作るのは ASPECT=api のときだけ(他は待つ)。
 
 ## storefront(apps/web)の約束

@@ -26,7 +26,7 @@
 | cdn-waf の待ち受け | 8081(ホスト PC 用。ホストの `127.0.0.1:18080` につなぐ。来た通信を「127.0.0.1 から来た」として扱う)と 18080(Docker のネットワークの中と `outside` 用。送り元の IP をそのまま使う) |
 | ingress の待ち受け | 8080(外には出さない) |
 | 名前の解決 | ingress は `resolver 127.0.0.11 valid=10s`。行き先を変数に入れ、リクエストのたびに調べる(行き先が未起動でも nginx は起動でき、その間は 502) |
-| IP フィルタ | ingress の起動時に `40-ip-filter.sh` が `BACKOFFICE_IP_ALLOWLIST`(既定 `127.0.0.1/32 172.30.89.0/24`)から `/etc/nginx/ip-filters/backoffice.conf`(`allow ...; deny all;`)を作る。空なら誰も通さない |
+| IP フィルタ | ingress の起動時に `40-ip-filter.sh` が `BACKOFFICE_IP_ALLOWLIST`(既定 `127.0.0.1/32 172.30.89.0/24 172.30.91.0/24`)から `/etc/nginx/ip-filters/backoffice.conf`(`allow ...; deny all;`)を作る。空なら誰も通さない |
 
 ## 3. 全体像 {#s3}
 ```text
@@ -122,7 +122,7 @@ ingress(クラスタの入口。エンドポイント)
 | `server_name www.lab.localhost` + `proxy_pass storefront:4000` | Ingress `www`(`host: www.lab.localhost`、`path: /` → Service `storefront:4000`) |
 | `set_real_ip_from ${CDN_WAF_IP}` + `real_ip_header X-Forwarded-For` | ingress-nginx の設定 `use-forwarded-headers: "true"`・`proxy-real-ip-cidr: "172.30.91.0/24"`(本格版の Docker のネットワーク `lab-kind`) |
 | `include .../backoffice.conf`(allow / deny) | Ingress `backoffice` の注釈 `nginx.ingress.kubernetes.io/allowlist-source-range: "127.0.0.1/32,172.30.89.0/24,172.30.91.0/24"` |
-| `location /admin/ { deny all; }` など | Ingress `api-blocked`・`backoffice-blocked`・`www-blocked`(許す範囲を `127.0.0.1/32` だけにする) |
+| `location /admin/ { deny all; }` など | Ingress `api-blocked`・`backoffice-blocked`・`www-blocked`(注釈 `nginx.ingress.kubernetes.io/denylist-source-range: "0.0.0.0/0"` で、どこから来ても 403) |
 | `limit_req zone=login burst=5` | Ingress `api-ratelimit-1` の注釈 `limit-rps: "1"`・`limit-burst-multiplier: "5"` |
 | 環境の違い | d1・s1 は `patches/ip-filter-www.yaml`・`ip-filter-api.yaml`・`ip-filter-api-ratelimit-1.yaml` で www・api も社内だけ。p1 は上書きなし |
 

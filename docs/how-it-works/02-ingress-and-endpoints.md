@@ -27,7 +27,7 @@ ingress は、**クラスタの入口にいる受付係** です。封筒の宛�
 | | cdn-waf(警備員) | ingress(受付) |
 | --- | --- | --- |
 | 置き場所 | クラスタの外 | クラスタの入口 |
-| 持ち主(CCv2 の案件) | お客さんが別に契約する CDN・WAF | CCv2(Cloud Portal で設定) |
+| 持ち主(CCv2 の案件) | お客さんが別に契約する CDN・WAF(CCv2 にも簡易の Basic WAF はある) | CCv2(Cloud Portal で設定) |
 | 知っていること | 攻撃の形・よく聞かれる答え | どのホスト名がどのサービスか・社内の IP の範囲 |
 | やること | キャッシュ・WAF・全体のレート制限・ヘッダ | 振り分け・IP フィルタ・ログインの回数制限・中の人だけの口を閉じる |
 
@@ -51,7 +51,7 @@ ingress は、**クラスタの入口にいる受付係** です。封筒の宛�
 
   www なら   → storefront:4000(IP フィルタなし。/metrics だけ閉じる)
   api なら   → api:3001(IP フィルタなし。/admin/・/metrics・/readyz を閉じる。
-                          /authorizationserver/oauth/token は IP ごとに 1 秒 1 回・最初の 5 回はまとめて可)
+                          /authorizationserver/oauth/token は IP ごとに 1 秒 1 回・余裕 5 回(続けてなら 6 回まで通る))
   知らない名前 → 404「エンドポイントがありません」
 ```
 
@@ -59,7 +59,7 @@ ingress は、**クラスタの入口にいる受付係** です。封筒の宛�
 2. **ホスト名で塊を選びます。** nginx の `server_name` が一致した `server { }` の設定が使われます。どれにも当たらなければ、最初の「知らないホスト名」用の塊が 404 を返します。
 3. **IP フィルタ。** backoffice だけ、許す範囲の一覧(allow)と「それ以外は拒否(deny all)」で絞ります。
 4. **閉じた口。** 指標(`/metrics`)・準備の確認(`/readyz`)・カオスの切り替え(`/admin/`)は、中の人(Prometheus や運用者)だけが使う口なので、外からは 403 にします。
-5. **行き先へ渡します。** 行き先の名前はリクエストのたびに Docker の DNS で引きます。
+5. **行き先へ渡します。** 行き先の名前は、リクエストが来たときに Docker の DNS で引きます(引いた結果は 10 秒だけ覚えておきます)。
 
 ## 3. 設定の読み方 {#s3}
 
@@ -110,7 +110,7 @@ limit_req_zone $binary_remote_addr zone=login:10m rate=1r/s;
 limit_req_status 429;
 ```
 
-- IP ごとに 1 秒 1 回。最初の 5 回までは待たせずに通し(`burst=5 nodelay`)、それを超えたら 429 です。api はわざと「何度失敗してもロックしない」ので、ここが唯一の歯止めです。
+- IP ごとに 1 秒 1 回。`burst=5 nodelay` は「1 秒 1 回を超えた分も 5 回までは待たせずに通す」という余裕なので、続けて打つと 6 回目までは通り、7 回目から 429 です(その後は 1 秒に 1 回ずつ通れる分が戻ります)。api はわざと「何度失敗してもロックしない」ので、ここが唯一の歯止めです。
 
 ### 3.3 IP フィルタ(backoffice) {#s3-3}
 
@@ -248,7 +248,7 @@ kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
 | `include .../backoffice.conf`(allow / deny) | エンドポイントに付ける「IP フィルタ」(許す IP の範囲の一覧) |
 | `manifest.json` の `ipFilters.office` | 社内の IP の範囲を名前付きでまとめた物(Cloud Portal で IP フィルタのセットを作るのに相当) |
 | d1・s1 では www・api も社内だけ | 開発・検証環境のエンドポイントを社内の IP だけにする、よくある運用 |
-| `/admin/`・`/metrics`・`/readyz` を閉じる | 外に出さない管理用の口(CCv2 では、そもそもエンドポイントに出さない) |
+| `/admin/`・`/metrics`・`/readyz` を閉じる | 外に出さない管理用の口(CCv2 では、エンドポイントに出さないか、Cloud Portal の「Deny Path Set」(拒否するパスの一覧)をエンドポイントに付けて閉じる) |
 | ingress-nginx(本格版) | CCv2 の裏で動く Kubernetes の入口(利用者は直接は触らない) |
 
 ## 6. よくある誤解 {#s6}

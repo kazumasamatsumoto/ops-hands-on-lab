@@ -107,7 +107,7 @@ title: 仕組み-12 manifest と環境(d1・s1・p1)
 | --- | --- | --- |
 | `"name": "api"`・`"host"`・`"service"` | Ingress `api`(`host: api.lab.localhost` → Service `api`) | エンドポイント([仕組み-2](./02-ingress-and-endpoints)) |
 | `"ipFilter": null` | 注釈なし | 誰でも通す(`"office"` なら注釈 `allowlist-source-range` が付く) |
-| `"blockedPaths"` | Ingress `api-blocked`(許す範囲を `127.0.0.1/32` だけにして、外からは 403) | 中の人だけの口を閉じる |
+| `"blockedPaths"` | Ingress `api-blocked`(注釈 `denylist-source-range: "0.0.0.0/0"` で、どの IP からでも 403) | 中の人だけの口を閉じる(中の見張りは Ingress を通らず直接取りに行く) |
 | `"rateLimits"` | Ingress `api-ratelimit-1`(注釈 `limit-rps: "1"`・`limit-burst-multiplier: "5"`) | パスごとの回数制限 |
 
 ### 3.3 環境 1 つぶん {#s3-3}

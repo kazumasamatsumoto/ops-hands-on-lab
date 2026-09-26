@@ -62,7 +62,7 @@ db:5432(PostgreSQL 17) / search(軽量版は DB の検索で代用。本格版�
 | 見張り | Prometheus・Alertmanager・pager・Grafana・Loki・Alloy(本格版は + OTel Collector・Tempo) | 監視の道具(APM・ログ検索) | SRE 方式 |
 | 土台 | docker compose・kind・manifest.json | manifest.json とビルド・デプロイ、環境 d1・s1・p1 | インフラ方式 |
 
-責任分界: ラボでは 1 人が全部を持ちます。現場では上の「持ち主」の列に、チーム名と連絡先を書きます。CCv2 では「CDN・WAF はお客さん側の契約」「クラスタと Solr・DB は提供側」「storefront と aspect の中身は開発チーム」のように持ち主が分かれるので、特にここを書かないと障害のときに誰が動くかで迷います。
+責任分界: ラボでは 1 人が全部を持ちます。現場では上の「持ち主」の列に、チーム名と連絡先を書きます。CCv2 では「外の CDN・WAF はお客さん側で用意する(Cloud Portal にも簡易な WAF はある)」「クラスタと Solr・DB は提供側」「storefront と aspect の中身は開発チーム」のように持ち主が分かれるので、特にここを書かないと障害のときに誰が動くかで迷います。
 
 ## 4. 決定事項 {#s4}
 ### 4.1 利用者の通り道は cdn-waf の 1 か所だけ {#s4-1}

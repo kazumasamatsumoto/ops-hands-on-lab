@@ -190,7 +190,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H 'Host: worker.lab.localhost' http://
 
 # ジョブを全部失敗させ、間隔を 10 秒に縮める → 1〜2 分で CronJobStaleDemo、5〜6 分で CronJobStale
 CHAOS_CRON_FAIL=true CRON_INTERVAL_SECONDS=10 docker compose up -d worker
-# pager(http://localhost:19094)と Grafana の「worker(定期ジョブ)」の段で様子を見る
+# pager(http://localhost:19094)と Grafana の「worker(定期ジョブ = backgroundProcessing)」の段で様子を見る
 # 片付け(つまみを書かずに起動し直すと既定値に戻る)
 docker compose up -d worker
 
@@ -223,11 +223,11 @@ k8s/chaos.sh worker boot-reset                                    # 元に戻す
 | `ASPECT` | aspect(同じビルドを、役ごとに設定を変えて動かす単位) |
 | `ASPECT=api` | api aspect(OCC・OAuth などの REST API を出す) |
 | `ASPECT=backoffice` | backoffice aspect(Backoffice の管理画面。社内の IP だけに絞ることが多い) |
-| `ASPECT=backgroundProcessing` | backgroundProcessing aspect(CronJob・インポート・索引作りなど、お客さんと話さない裏の仕事。外にエンドポイントを出さない) |
+| `ASPECT=backgroundProcessing` | backgroundProcessing aspect(CronJob・インポート・索引作りなど、お客さんと話さない裏の仕事。CCv2 では管理や調査用のエンドポイントがあり、Backoffice と同じくらい IP を絞るのがふつう。ラボは入口そのものを作っていない) |
 | manifest.json の `aspects[]` | CCv2 の manifest.json の aspect ごとの設定(プロパティ・Web アプリの並び) |
 | `stockImportJob`・`searchIndexJob` | CronJob(定期ジョブ)。在庫の取り込みや Solr の索引の全件・差分の作り直しなど |
 | `cronjob_last_success_timestamp_seconds` と `CronJobStale` | Backoffice で見る CronJob の結果(成功・失敗・最終実行)と、それを見張る監視 |
-| 表を作るのは api だけ | CCv2 ではデプロイのときに DB の初期化・更新を 1 回だけ行い、各 aspect はそれを使う |
+| 表を作るのは api だけ | CCv2 ではデプロイのときに DB の初期化・更新を 1 回だけ行い(専用の admin aspect が受け持つ)、各 aspect はそれを使う |
 
 ## 6. よくある誤解 {#s6}
 

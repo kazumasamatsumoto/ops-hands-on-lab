@@ -1,6 +1,6 @@
-// ASPECT=backgroundProcessing — 画面を持たず、決まった時間ごとに仕事(定期ジョブ)をする役です。
-// CCv2 の backgroundProcessing aspect に当たります(CronJob はここで動きます)。
-// 外に出すのは /healthz と /metrics だけ(/admin/chaos は中からだけ)。
+// ASPECT=backgroundProcessing — このラボでは画面を持たず、決まった時間ごとに仕事(定期ジョブ)をする役です。
+// CCv2 の backgroundProcessing aspect に当たります(CronJob はここで動きます。なお CCv2 では hAC などもこの aspect で動きます)。
+// ポートは /healthz と /metrics に使うだけで、ingress からは外に出していません(/admin/chaos は中からだけ)。
 //
 // ジョブ:
 //   stockImportJob : 在庫を少し変える。基幹システム(倉庫)からの在庫の取り込みの代わり。

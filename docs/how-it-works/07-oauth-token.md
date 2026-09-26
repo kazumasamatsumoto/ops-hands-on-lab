@@ -30,7 +30,7 @@ title: 仕組み-7 OAuth のトークン(ログインの正体)
  ① POST http://api.lab.localhost:18080/authorizationserver/oauth/token
       Content-Type: application/x-www-form-urlencoded
       grant_type=password&client_id=storefront&username=alice&password=password
-      → cdn-waf(ためない)→ ingress(IP ごとに 1 秒 1 回・まとめて 5 回まで)→ api
+      → cdn-waf(ためない)→ ingress(IP ごとに 1 秒 1 回。続けて来ても 6 回目までは通し、7 回目から 429)→ api
  ② api(認可サーバーの役)
       grant_type は password か         違えば 400 unsupported_grant_type
       client_id は storefront か         違えば 401 invalid_client
@@ -98,7 +98,7 @@ const ALLOWED_CLIENTS = new Set(['storefront']);
 ```
 
 - `Cache-Control: no-store` … トークンの返事は、途中のキャッシュ(CDN)に絶対に残させません。
-- `grant_type` … トークンのもらい方の種類。ここでは「名前とパスワードを渡す」パスワードグラントだけです。
+- `grant_type` … トークンのもらい方の種類。ここでは「名前とパスワードを渡す」パスワードグラントだけです。パスワードグラントは古いやり方で、今の OAuth の決まりでは使わないことになっています(下の「よくある誤解」)。
 - `invalid_grant` が 400 なのは、OAuth の決まりで「送られた資格(名前・パスワード)が正しくない」は 400 と決まっているためです。
 - `randomBytes(32)` … 推測できない 32 バイトの乱数。`base64url` で URL に入れても壊れない文字にします。
 - `expires_at` … DB の時計で「今 + 900 秒」。
@@ -154,7 +154,7 @@ api は「何度失敗してもロックしない」作りなので、総当た�
   }
 ```
 
-- IP ごとに 1 秒 1 回、最初の 5 回はまとめて通し、超えたら 429 です([仕組み-2](./02-ingress-and-endpoints))。
+- IP ごとに 1 秒 1 回です。`burst=5` は「決まりの 1 回に加えて、5 回までは待たせずに通す」という意味なので、一気に送ると 6 回目までは通り、7 回目から 429 になります([仕組み-2](./02-ingress-and-endpoints)・[セキュリティ-2 の演習](/exercises/18-sec-rate-limit-login))。
 
 ## 4. 確かめるコマンド {#s4}
 
@@ -202,7 +202,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
 | `POST /authorizationserver/oauth/token` | OAuth の認可サーバー(同じパス) |
 | `client_id=storefront`(秘密の鍵なし) | 登録した OAuth のクライアント(Composable Storefront 用のクライアントを用意する)。ブラウザに置く値は秘密にならない前提で扱う |
 | `ALLOWED_CLIENTS` | OAuth のクライアントの登録データ(ImpEx などで入れる) |
-| `grant_type=password` | Composable Storefront の既定のログインの形(資格情報を送ってトークンをもらう) |
+| `grant_type=password` | 以前の Composable Storefront の既定のログインの形(資格情報を送ってトークンをもらう)。新しい版(JDK 21 版の SAP Commerce Cloud と組み合わせる版)では、ログイン画面へ移って戻ってくる「認可コードフロー」に切り替える必要があります |
 | `expires_in: 900` | クライアントごとのトークンの有効期限の設定 |
 | `oauth_access_tokens` の表 | トークンの保存先(CCv2 でも DB に持つ) |
 | sessionStorage の `samplestore.token` | Composable Storefront がブラウザに持つログイン状態(保存先は設定で変わる。案件で確かめる) |
@@ -213,6 +213,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
 - **「ログインすると、サーバーがセッション(ログイン状態)を覚えている」** → ラボの api は、リクエストのたびにトークンを DB で照らし合わせるだけです。覚えているのは「トークンの指紋と期限」だけです。
 - **「client_id は秘密の鍵」** → ブラウザで動くアプリに置いた値は、誰でも見られます。だから `storefront` は秘密の鍵(client_secret)を持たない「公開クライアント」として扱います。
 - **「400 と 401 はどちらも『ログイン失敗』」** → 400 `invalid_grant` は「名前かパスワードが違う」、401 `invalid_client` は「そのアプリは登録されていない」、注文の API の 401 は「トークンが無い・無効・期限切れ」です。原因が違います。
+- **「パスワードグラントは今でもふつうのやり方」** → いいえ。OAuth のセキュリティの決まり(RFC 9700)では「使ってはいけない」とされ、OAuth 2.1 でも外されています。ラボは 1 リクエストで流れを見せるために使っているだけです。本番の設計では認可コードフロー(PKCE 付き)を選びます。
 - **「トークンは長く使えるほうが便利」** → 盗まれたときに使われる時間も長くなります。ラボは 15 分にしています。
 - **「ログインできたなら、他人の注文も番号を変えれば見られる」** → それは認可の穴(IDOR)です。トークンで「誰か」を決めたあと、「その注文の持ち主か」も確かめる必要があります。
 

@@ -23,7 +23,7 @@
 ## 2. 前提 {#s2}
 | 前提 | 内容 |
 | --- | --- |
-| URL | `/p/:code`(`:code` は商品コード。見本は `100001`〜`100030`)。CCv2 の Composable Storefront の商品ページの URL の形に合わせています |
+| URL | `/p/:code`(`:code` は商品コード。見本は `100001`〜`100030`)。SAP Commerce の Accelerator の商品ページの URL の形(`…/p/{商品コード}`)に合わせています。Composable Storefront の既定は `product/{商品コード}/{名前}` ですが、Accelerator の形の URL も商品ページとして受け付けます |
 | ルート | [app.routes.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/app.routes.ts) の `p/:code` → `CmsRoute`(`data: { pageType: 'ProductPage' }`)。最初の JS に入ります(遅延読み込みしません) |
 | 部品 | [cms-route.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/cms-route.ts)(CMS のページを取る)・[product-details.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/components/product-details.ts)(商品の本体)・[product-carousel.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/cms/components/product-carousel.ts)(同じ分類の商品) |
 | CMS のページ | api の [cms.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/cms.js)。ページ `productDetails`(テンプレート `ProductDetailsPageTemplate`)を返し、`ProductRelatedCarousel` の `productCodes` に同じ分類の商品を最大 8 件入れます |

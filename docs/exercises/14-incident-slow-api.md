@@ -111,7 +111,7 @@ api: status=200 total=4.020010s
 
 ```text
 {"time":"...","service":"storefront","level":"warn","event":"ssr_fallback","url":"/p/100012","route":"/p/:code","timeoutMs":3000}
-{"time":"...","service":"storefront","level":"info","msg":"request","route":"/p/:code","status":200,"durationMs":3004,"renderMode":"csr","fallback":true}
+{"time":"...","service":"storefront","level":"info","msg":"request","method":"GET","url":"/p/100012","route":"/p/:code","status":200,"durationMs":3003.5,"renderMode":"csr","fallback":true,"reqId":"..."}
 ```
 
 **手順 4**: ブラウザでは、約 3 秒で最初の応答が届き(`responseStart` 約 3,037ms)、その後ブラウザが api を呼んで商品「ステンレス水筒 500ml」を表示しました(開いてから約 11 秒)。api の呼び出しはどれも約 4 秒かかり、CMS の設計図 → 商品の中身 の順に待つので 2 回ぶん待たされます。画面下は「描画モード: CSR(SSR が時間切れのため、ブラウザで描画)」です。

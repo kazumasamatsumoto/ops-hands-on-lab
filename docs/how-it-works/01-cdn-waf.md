@@ -7,7 +7,7 @@ title: 仕組み-1 cdn-waf(CDN と WAF)
 ::: tip このページで分かること
 - cdn-waf が 1 つのリクエストに対して、**どの順で何を確かめ、何を足すか**。
 - キャッシュ(ためて使い回す)・レート制限(回数の制限)・WAF(攻撃の遮断)・セキュリティヘッダの設定の 1 行ずつの意味。
-- CCv2 の案件で、この役を誰が持つのか(CCv2 の中にはなく、お客さんが別に用意するのが普通)。
+- CCv2 の案件で、この役を誰が持つのか(CCv2 にも簡易の WAF(Basic WAF)と本番以外向けのキャッシュはありますが、本番では SAP も CDN を勧めていて、CDN と WAF はお客さんが別に用意するのが普通)。
 :::
 
 ## 1. 一言でいうと {#s1}
@@ -33,7 +33,7 @@ cdn-waf は、**お店(クラスタ)の外に立つ、盾と受け渡し口** �
                           18080(Docker の中・社外の代わり)→ 送り元の IP をそのまま使う
   ② どのホスト名か        server_name で www / api / backoffice の塊を選ぶ
   ③ WAF(ModSecurity)     URL・ヘッダ・本文を OWASP CRS のルールで採点 → 5 点以上なら 403
-  ④ レート制限            IP ごとに 1 秒 20 回(まとめて 80 回まで)→ 超えたら 429
+  ④ レート制限            IP ごとに 1 秒 20 回(まとめて来たときの余裕 80 回)→ 超えたら 429
   ⑤ キャッシュを探す      キー = メソッド + ホスト名 + URL
        ├ ある(30 秒以内) → ここで返す  X-Cache-Status: HIT
        └ ない            → ⑥ へ        X-Cache-Status: MISS
@@ -222,12 +222,12 @@ LAB_SKIP_BUILD=1 k8s/up.sh
 | cdn-waf というコンテナ | お客さんが別に契約する CDN・WAF(例: CloudFront + AWS WAF、Akamai など)。CCv2 のエンドポイントの前に置く |
 | `proxy_cache_valid 200 30s` | CDN のキャッシュの設定(パスごとの保存時間。キャッシュのルール) |
 | `$has_credentials` でためない | CDN の「Cookie・Authorization ヘッダがあればキャッシュしない」設定 |
-| `limit_req`(IP ごと 1 秒 20 回) | WAF のレート制限のルール |
+| `limit_req`(IP ごと 1 秒 20 回) | CDN の WAF のレート制限のルール(Cloud Portal の Basic WAF にもエンドポイントごとのレート制限があるが、前に CDN を置くときは使わないよう SAP が注意している) |
 | ModSecurity + OWASP CRS | WAF のマネージドルール(SQL インジェクション・XSS など) |
 | lab-exclusions-before.conf | WAF の例外ルール(誤遮断の対処) |
 | `add_header Content-Security-Policy` | CDN で付けるレスポンスヘッダ、または Composable Storefront の SSR サーバーで付けるヘッダ |
 
-CCv2 の Cloud Portal には「エンドポイント」と「IP フィルタ」がありますが、それは次の ingress の役です([仕組み-2](./02-ingress-and-endpoints))。CDN・WAF をどこに置くかは、案件ごとに決めることです。
+CCv2 の Cloud Portal には「エンドポイント」と「IP フィルタ」がありますが、それは次の ingress の役です([仕組み-2](./02-ingress-and-endpoints))。Cloud Portal には、ほかに簡易の WAF(Basic WAF。IP ごとのレート制限・パスの拒否・接続数の制限)と、本番以外の環境向けのキャッシュ(Web Caching)もあります。ただし、本番では CDN を使うこと、通信が多いなら CDN 側の WAF を使うことを SAP が勧めています。CDN・WAF をどこに置くかは、案件ごとに決めることです。
 
 ## 6. よくある誤解 {#s6}
 

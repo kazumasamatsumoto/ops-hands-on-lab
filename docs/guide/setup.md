@@ -62,7 +62,7 @@ Mac なら `sudo sh -c 'echo "127.0.0.1 www.lab.localhost api.lab.localhost back
 
 ```bash
 docker compose up -d --build
-docker compose ps      # STATUS が healthy になれば準備完了(1〜2 分)
+docker compose ps      # STATUS が healthy になれば準備完了(1〜2 分。loki と alloy は検査が無いので Up だけです)
 ```
 
 ### 止める
@@ -172,5 +172,5 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 | 変えたはずのバナー・価格が反映されない | cdn-waf のキャッシュ(30 秒)が効いています。30 秒待つか、`EDGE_CACHE=off docker compose up -d cdn-waf`([ネットワーク-1](/exercises/07-nw-cache)) |
 | Grafana のグラフが空 | 数字は 5 秒ごとに集め、5 分の平均で計算します。サイトを何回か開いて 1〜2 分待ちます |
 | CSP で `Refused to execute inline script ... 'sha256-...'` が出る | Angular の更新で埋め込みスクリプトの指紋が変わりました。README の「CSP の指紋」で足します |
-| 本格版で古いイメージのまま | イメージを作り直したら `k8s/up.sh` をもう一度(`kind load` と `rollout restart` を両方します) |
+| 本格版で古いイメージのまま | `k8s/up.sh` をもう一度実行するとイメージを作り直してノードに読み込みます(`kind load`)。ただし名前が同じ `lab/api:local`・`lab/web:local` のままなので、動いている Pod は入れ替わりません。続けて `kubectl -n lab rollout restart deploy/api deploy/backoffice deploy/worker deploy/storefront` で作り直します |
 | 本格版で kubectl が別のクラスタを見ている | `kubectl config use-context kind-lab` |

@@ -95,7 +95,7 @@
 ### 4.8 OAuth のクライアントとトークン {#s4-8}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | トークンを出すのは、登録したクライアント `storefront` だけ(それ以外は 401 `invalid_client`)。`storefront` はブラウザで動く**公開クライアント**なので秘密の鍵(client_secret)を持たせない。受ける種類はパスワードグラントだけ(ほかは 400 `unsupported_grant_type`)。トークンは推測できない 32 バイトの乱数、寿命 900 秒、DB には SHA-256 の値だけを置く。応答には `Cache-Control: no-store` を付けて途中でためさせない。ログアウトは `/authorizationserver/oauth/revoke` で取り消す。ブラウザではメモリと sessionStorage にだけ持つ([FE 方式 4.5](/design/architecture/01-frontend#s4-5)) |
+| 決定 | トークンを出すのは、登録したクライアント `storefront` だけ(それ以外は 401 `invalid_client`)。`storefront` はブラウザで動く**公開クライアント**なので秘密の鍵(client_secret)を持たせない。受ける種類はパスワードグラントだけ(ほかは 400 `unsupported_grant_type`。学習用の選択で、本番の新規構築では使わない。未決事項 3)。トークンは推測できない 32 バイトの乱数、寿命 900 秒、DB には SHA-256 の値だけを置く。応答には `Cache-Control: no-store` を付けて途中でためさせない。ログアウトは `/authorizationserver/oauth/revoke` で取り消す。ブラウザではメモリと sessionStorage にだけ持つ([FE 方式 4.5](/design/architecture/01-frontend#s4-5)) |
 | 理由 | ブラウザに置いた秘密の鍵は誰でも読めるので、持たせても守りにならない。そのぶん、寿命を短くし、受ける相手と種類を絞り、DB が漏れても使えない形で保存する |
 | 却下した案 | client_secret を storefront の JS に埋め込む: 公開した瞬間に漏れる。寿命の長いトークン: 盗まれたときの被害が長く続く |
 | 実物 | [apps/api/src/occ/oauth.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/oauth.js)・[apps/web/src/app/core/auth.service.ts](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/web/src/app/core/auth.service.ts) |
@@ -118,7 +118,7 @@
 | --- | --- |
 | 1 | www の CSP の `style-src` に `'unsafe-inline'` が残っている。Angular の埋め込みスタイルを指紋か nonce にできるか |
 | 2 | CSP の違反をどこかに報告させるか(`report-to`) |
-| 3 | パスワードグラントをやめ、ログイン画面を認可サーバー側に置く形(認可コード + PKCE)にするか。今は CCv2 の storefront でよく見る形に合わせている |
+| 3 | パスワードグラントをやめ、ログイン画面を認可サーバー側に置く形(認可コード + PKCE)にするか。今は仕組みを短く見せるためにパスワードグラントを使っているが、OAuth 2.0 の現行の指針(RFC 9700)では使ってはいけないとされ、OAuth 2.1 の案にも無い。Composable Storefront も新しい SAP Commerce Cloud では認可コードの流れが既定で、パスワードの流れは古い版向けの互換として残っているだけ。本番の新規構築では認可コード + PKCE を選ぶ |
 | 4 | 依存パッケージとイメージの脆弱性スキャンをラボに入れるか |
 
 ## 8. レビュー観点 {#s8}
