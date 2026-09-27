@@ -207,10 +207,12 @@ curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/s
 kubectl -n lab scale deploy/search --replicas=1
 ```
 
+503 のはずが 200 のときは、Solr がまだ止まりきっていないか、30 秒以内に同じ検索をしていて cdn-waf のキャッシュが返しています(p1・s1)。数秒待ち、`query=` の言葉を変えて打ち直してください。
+
 Solr は Deployment `search`(Service `search:8983`)として動いています([k8s/platform/search.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/platform/search.yaml))。
 イメージは `solr:9.10.1-slim`、Java のヒープは `SOLR_HEAP=256m` です。コア `products` は、起動の引数 `solr-precreate products /opt/solr/server/solr/configsets/products`(公式イメージの仕組み。「コアが無ければこの設定から作ってから起動する」)で作ります。設定の `schema.xml`・`solrconfig.xml` は、`k8s/up.sh` が [apps/api/solr/products/conf/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/apps/api/solr/products/conf) から ConfigMap `solr-products-config` に入れ、1 ファイルずつ(`subPath`)つなぎます。索引は Pod の中の一時的な置き場所(`emptyDir`)にあり、Pod が作り直されると空になりますが、worker の次の `searchIndexJob`(最大 60 秒後)で戻ります。
 
-**反映の遅れを見る(本格版)**: backoffice で商品 100001 の価格を変えます。商品詳細(`/products/100001`)はすぐ新しい価格、検索結果の価格は worker が索引を作り直すまで(最大 60 秒)古い価格です。
+**反映の遅れを見る(本格版)**: backoffice で商品 100001 の価格を変えます。商品 1 件の API(`/occ/v2/samplestore/products/100001`。DB から読む)は新しい価格(キャッシュがある環境では最大 30 秒後)、検索結果の価格は worker が索引を作り直すまで(最大 60 秒)古い価格です。
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

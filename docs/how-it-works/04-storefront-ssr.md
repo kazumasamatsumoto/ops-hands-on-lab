@@ -76,7 +76,7 @@ SSR の良いところは、**最初の表示が速い** ことと、**検索エ
 - `RENDER_MODE` … `ssr`(既定)か `csr`。
 - `SSR_TIMEOUT_MS` … SSR をあきらめるまでの時間(ミリ秒)。既定 3000。
 - `SSR_WINDOW_BUG` … `true` でサーバーが `window` を触り、SSR が 500 になります(FE の規約の体験用)。
-- `NG_ALLOWED_HOSTS` … Angular の SSR は、知らない `Host` ヘッダを 400 で断ります(なりすましの対策)。ingress から来る `www.lab.localhost` と、中から直接呼ぶときの名前を許します。
+- `NG_ALLOWED_HOSTS` … Angular の SSR は、知らない `Host` ヘッダを 400 で断ります(`Host` ヘッダを偽って、サーバーに別の宛先へ通信させる攻撃 = SSRF の対策)。ingress から来る `www.lab.localhost` と、中から直接呼ぶときの名前を許します。
 
 ### 3.2 時間切れの仕組み {#s3-2}
 

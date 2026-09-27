@@ -45,7 +45,7 @@
 ### 4.2 キャッシュ {#s4-2}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | キャッシュは cdn-waf だけが持つ。状態 200 の応答を、画面(`/`・`/p/{code}`・`/search`)と API(`products/search`・`products/{code}`・`cms/pages`)は 30 秒、画像(`/medias/`)は 1 日ためる(api も `Cache-Control: public, max-age=86400` を付ける)。対象は GET と HEAD、鍵は「メソッド + ホスト名 + URL」。ためる場所は 100MB まで、1 日使われなければ捨てる。同じ物を同時に頼まれたら奥に取りに行くのは 1 回だけ(`proxy_cache_lock on`)。ON / OFF は環境変数 `EDGE_CACHE` の 1 か所(本格版では環境の `cdnCache`。d1 は OFF) |
+| 決定 | キャッシュは cdn-waf だけが持つ。状態 200 の応答を、画面(`/`・`/p/{code}`・`/search`)と API(`products/search`・`products/{code}`・`cms/pages`)は 30 秒、画像(`/medias/`)は 1 日ためる(api も `Cache-Control: public, max-age=86400` を付ける)。対象は GET と HEAD、鍵は「メソッド + ホスト名 + URL」。ためる場所は 100MB まで、1 日使われなければ捨てる。まだためていない物を同時に頼まれたら奥に取りに行くのは 1 回だけ(`proxy_cache_lock on`。期限切れの取り直しには効かない)。ON / OFF は環境変数 `EDGE_CACHE` の 1 か所(本格版では環境の `cdnCache`。d1 は OFF) |
 | 理由 | 商品の情報や CMS の並びは数十秒古くても困らない。30 秒でも、1 秒に 100 回見られる画面なら奥へ行くのは 30 秒に 1 回になる。画像は変わらないので長くてよい |
 | 却下した案 | 長くためる(10 分など): 価格の訂正や backoffice で変えたバナーがなかなか反映されない。ためない: セールの開始と同時にアプリが落ちる |
 | 実物 | [cdn-waf/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/cdn-waf/default.conf.template)・[apps/api/src/occ/medias.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/occ/medias.js) |

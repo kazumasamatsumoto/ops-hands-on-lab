@@ -56,7 +56,7 @@ k6 ──▶ api:3001 / storefront:4000 に直接(API_URL・WWW_URL)… アプ�
 ### 4.4 負荷試験 {#s4-4}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | 2 本のシナリオを持つ。**browse.js**: 5 人(`VUS`)が 2 分(`DURATION`)、トップの画面と CMS の API → 1 秒考える → 検索の API(12 件)→ 1 秒考える → 商品 1 件の API(`fields=FULL`)と商品詳細の画面 → 1〜3 秒考える、を繰り返す(`PAGES=0` で API だけ)。**ramp.js**: 30 秒で 5 人 → 1 分維持 → 20 人 → 1 分 → 50 人 → 1 分 → 30 秒で 0 人。各人は 0.5 秒ごとに商品 1 件の API(`TARGET=page` なら商品詳細の画面)を呼ぶ。どちらも cdn-waf 経由とアプリ直接の両方で測る |
+| 決定 | 負荷をかけるシナリオを 2 本持つ(このほかに、主な URL を 1 回ずつ確かめる smoke.js がある)。**browse.js**: 5 人(`VUS`)が 2 分(`DURATION`)、トップの画面と CMS の API → 1 秒考える → 検索の API(12 件)→ 1 秒考える → 商品 1 件の API(`fields=FULL`)と商品詳細の画面 → 1〜3 秒考える、を繰り返す(`PAGES=0` で API だけ)。**ramp.js**: 30 秒で 5 人 → 1 分維持 → 20 人 → 1 分 → 50 人 → 1 分 → 30 秒で 0 人。各人は 0.5 秒ごとに商品 1 件の API(`TARGET=page` なら商品詳細の画面)を呼ぶ。どちらも cdn-waf 経由とアプリ直接の両方で測る |
 | 理由 | 普通の使われ方で目標を守れるかと、どこで限界が来るか・何が先に詰まるか(レート制限の 429 か、api の遅れか、DB か)を分けて知る |
 | 却下した案 | 1 つの URL だけを全力で連打: 本番の混ざった使われ方と違い、キャッシュに全部当たって「速い」と勘違いする |
 | 実物 | [browse.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/k6/browse.js)・[ramp.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/k6/ramp.js)・[k6.sh](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/k6.sh) |

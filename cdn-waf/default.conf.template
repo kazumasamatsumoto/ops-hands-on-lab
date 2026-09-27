@@ -100,7 +100,9 @@ proxy_no_cache     $cache_disabled $has_credentials;
 #   例: SSR をあきらめた「空の HTML」、注文・トークンの返事。
 # 返事に Cache-Control: max-age が付いていれば、その秒数ためます(例: /medias/ の 86400 秒)。
 # 何も付いていなければ、location ごとの proxy_cache_valid の時間ためます。
-# 同じ物を同時にたくさん頼まれたら、奥に取りに行くのは 1 回だけにします(行列の先頭の人だけが取りに行く)。
+# まだためていない物を同時にたくさん頼まれたら、奥に取りに行くのは 1 回だけにします(行列の先頭の人だけが取りに行く)。
+# 期限切れ(EXPIRED)の取り直しには効かないので、その瞬間に来たリクエストはそれぞれ奥へ行きます(proxy_cache_use_stale updating は使っていません)。
+# 待つのは最長 5 秒(proxy_cache_lock_timeout の既定)で、過ぎると奥へ行きます。
 proxy_cache_lock on;
 
 server {

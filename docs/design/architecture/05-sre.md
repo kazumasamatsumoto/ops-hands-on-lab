@@ -78,7 +78,7 @@ Grafana ◀── Prometheus・Loki(本格版は + Tempo)(ダッシュボード�
 ### 4.6 ダッシュボード {#s4-6}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | Grafana のホームを「サンプルストア SLO」にする。上から「SLO の要約(成功率・p95・予算の残り・1 時間窓のバーンレート)」「storefront と api(リクエスト・成功率・p95・バーンレート・メモリ・カオスの状態)」「storefront(SSR)」「worker(定期ジョブ)」「ログ(Loki)」の順。ファイルから自動で登録し、ログインなしで閲覧できる(ラボだけ)。本格版はダッシュボード「サンプルストア 1 リクエストの道筋」(Tempo。[k8s/config/dashboards/samplestore-trace.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/config/dashboards/samplestore-trace.json))を足す。並びは「使い方」「最近の道筋」「選んだ道筋(storefront → api → pg)」「この道筋のログ(同じ trace_id)」 |
+| 決定 | Grafana のホームを「サンプルストア SLO」にする。上から「SLO の要約」(成功率・p95・予算の残り・1 時間窓のバーンレート)、「storefront と api」(リクエスト・成功率・p95・バーンレート・メモリ・カオスの状態)、「storefront(SSR)」、「worker(定期ジョブ = backgroundProcessing)」、「ログ(Loki)」の段の順。ファイルから自動で登録し、ログインなしで閲覧できる(ラボだけ)。本格版はダッシュボード「サンプルストア 1 リクエストの道筋」(Tempo。[k8s/config/dashboards/samplestore-trace.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/config/dashboards/samplestore-trace.json))を足す。並びは「使い方」「最近の道筋」「選んだ道筋(storefront → api → pg)」「この道筋のログ(同じ trace_id)」 |
 | 理由 | 障害のとき、最初に開く 1 枚を決めておく。上から「困っているか → どこか → なぜか」の順に読める |
 | 実物 | [samplestore-slo.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/grafana/dashboards/samplestore-slo.json)・[datasources.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/grafana/provisioning/datasources/datasources.yml) |
 
@@ -111,7 +111,7 @@ Grafana ◀── Prometheus・Loki(本格版は + Tempo)(ダッシュボード�
 | 成功率 | 1 か月 99.9% | 予算 0.1%。30 日 = 43,200 分 × 0.001 = **43.2 分/月**(全部止まった場合の持ち分) |
 | 緊急の基準 | 14.4 倍 | 1 時間で予算の 2%: 0.02 × 720 時間 ÷ 1 時間 = 14.4。このままだと 30 日 ÷ 14.4 ≒ **約 2 日**で使い切る |
 | 警告の基準 | 6 倍 | 6 時間で予算の 5%: 0.05 × 720 ÷ 6 = 6。このままだと 30 日 ÷ 6 = **5 日**で使い切る |
-| 例: エラー率 50% | バーンレート 500 | 0.5 ÷ 0.001 = 500 → 43.2 分 ÷ 500 ≒ 約 5 分で 1 か月分を使い切る |
+| 例: エラー率 50% | バーンレート 500 | 0.5 ÷ 0.001 = 500 → 43,200 分 ÷ 500 ≒ 約 86 分(1 時間半ほど)で 1 か月分を使い切る |
 | 定期ジョブ | 最後の成功から 300 秒以内 | 間隔 60 秒なら、およそ 5 回(5 分ぶん)続けて失敗・停止すると鳴る |
 
 ## 6. 配下の詳細設計書 {#s6}

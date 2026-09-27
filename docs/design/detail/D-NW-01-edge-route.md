@@ -71,7 +71,7 @@ ingress(クラスタの入口。エンドポイント)
 | `proxy_cache_valid` | `200 30s`(`/medias/` は `200 1d`) | 状態 200 だけをためる |
 | `proxy_cache_methods` | `GET HEAD` | 読み取りだけ |
 | `proxy_cache_bypass` / `proxy_no_cache` | `$cache_disabled $has_credentials` | OFF のとき・`Authorization` か Cookie があるときは使わず、ためない |
-| `proxy_cache_lock` | `on` | 同じ物を同時に頼まれたら、奥へは 1 回だけ |
+| `proxy_cache_lock` | `on` | まだためていない物を同時に頼まれたら、奥へは 1 回だけ(期限切れの取り直しには効かない) |
 | `EDGE_CACHE` | `on`(既定) | `on` 以外なら全部 OFF。`EDGE_CACHE=off docker compose up -d cdn-waf` で切り替え。本格版は環境ごと(d1 は `off`、s1・p1 は `on`) |
 
 - 返事に `Cache-Control: no-store`・`private`・`no-cache` が付いていればためません(nginx の既定の動き)。例: SSR をあきらめた空の HTML、注文・トークンの返事。
@@ -81,7 +81,7 @@ ingress(クラスタの入口。エンドポイント)
 ### 4.3 X-Cache-Status の読み方 {#s4-3}
 | 値 | 意味 | よく見る場面 |
 | --- | --- | --- |
-| `MISS` | ためた物が無く、奥へ取りに行った(今回の結果をためた) | 最初の 1 回 |
+| `MISS` | ためた物が無く、奥へ取りに行った(ためてよい返事なら、今回の結果をためた。`no-store` などが付いた返事はためない) | 最初の 1 回 |
 | `HIT` | ためた物を返した(奥へ行っていない) | 30 秒以内の 2 回目以降 |
 | `EXPIRED` | 期限を過ぎていたので取り直した | 31 秒後 |
 | `BYPASS` | ログインの印があるか、キャッシュが OFF なので使わなかった | `Authorization` 付き、`EDGE_CACHE=off` |

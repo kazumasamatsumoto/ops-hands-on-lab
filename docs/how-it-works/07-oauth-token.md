@@ -204,7 +204,7 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
 | `ALLOWED_CLIENTS` | OAuth のクライアントの登録データ(ImpEx などで入れる) |
 | `grant_type=password` | 以前の Composable Storefront の既定のログインの形(資格情報を送ってトークンをもらう)。新しい版(JDK 21 版の SAP Commerce Cloud と組み合わせる版)では、ログイン画面へ移って戻ってくる「認可コードフロー」に切り替える必要があります |
 | `expires_in: 900` | クライアントごとのトークンの有効期限の設定 |
-| `oauth_access_tokens` の表 | トークンの保存先(CCv2 でも DB に持つ) |
+| `oauth_access_tokens` の表 | トークンの保存先(CCv2 でも DB に持つ。ただし JDK 21 版の認可サーバーのトークンは中身の入った JWT で、api 側は署名で確かめるので、ラボのように呼ばれるたびに DB を引くわけではありません) |
 | sessionStorage の `samplestore.token` | Composable Storefront がブラウザに持つログイン状態(保存先は設定で変わる。案件で確かめる) |
 | ingress の回数制限 | WAF・CDN やエンドポイントの手前での回数制限 |
 

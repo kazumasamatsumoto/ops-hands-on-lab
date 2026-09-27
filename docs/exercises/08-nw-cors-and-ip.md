@@ -16,7 +16,7 @@ title: ネットワーク-2 CORS と IP 制限
 
 「誰が・どこから・どの入口を使ってよいか」を決めないと、便利にしたつもりの設定がそのまま穴になります。
 
-> **よくある事故 1(CORS)**: スマホアプリの開発中、「ブラウザで API が呼べない」と言われた担当者が、API に「どのサイトからでも読んでよい」という設定を入れました。
+> **よくある事故 1(CORS)**: スマホアプリの開発中、「ブラウザで API が呼べない」と言われた担当者が、API に「どのサイトから来ても、そのサイトに読ませてよい(ログインの Cookie 付きでも)」という設定を入れました(送られてきた `Origin` をそのまま `Access-Control-Allow-Origin` に返し、`Access-Control-Allow-Credentials: true` も付ける形です。`*` だけなら、ブラウザは Cookie 付きの返事を読ませません)。
 > 本番にもそのまま出てしまい、罠のサイトを開いたお客様のブラウザから、ログイン中の会員情報が読み出せる状態になっていました。
 >
 > **よくある事故 2(IP 制限)**: 管理画面の URL を「推測されにくい名前」にしただけで公開していました。
@@ -90,7 +90,7 @@ CORS の許可は、CCv2 の `corsfilter`(OCC の CORS の設定)に当たりま
    docker compose logs ingress --no-log-prefix --since 1m | grep 'access forbidden' | tail -1
    ```
 
-6. **偽の IP は信じないことを確かめる**。社外から、自分で `X-Forwarded-For: 127.0.0.1`(= 社内のふり)を付けても通りません。ingress は cdn-waf が書いた値しか信じないからです。
+6. **偽の IP は信じないことを確かめる**。社外から、自分で `X-Forwarded-For: 127.0.0.1`(= 社内のふり)を付けても通りません。cdn-waf が `X-Forwarded-For` を本当の送り元の IP で上書きし、ingress は cdn-waf から来たときだけその値を信じるからです。
 
    ```bash
    docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外+偽XFF → backoffice: %{http_code}\n' \
@@ -149,7 +149,7 @@ deny all;
 [error] access forbidden by rule, client: 172.30.90.3, server: backoffice.lab.localhost, request: "GET /backoffice/login HTTP/1.1"
 ```
 
-**手順 6**: 偽の `X-Forwarded-For` を付けても 403。ingress は「cdn-waf(172.30.89.10)から来たときだけ `X-Forwarded-For` を信じる」ので、社外から自分で書いた値は無視されます。
+**手順 6**: 偽の `X-Forwarded-For` を付けても 403。cdn-waf が `X-Forwarded-For` を本当の送り元(172.30.90.x)で **上書き** し、ingress は「cdn-waf(172.30.89.10)から来たときだけ `X-Forwarded-For` を信じる」ので、社外から自分で書いた値は届く前に消えています。
 
 ```text
 社外+偽XFF → backoffice: 403

@@ -111,7 +111,9 @@ function renderLogin(res, error) {
   // ログイン前の CSRF 対策: 同じ乱数をクッキーとフォームの両方に入れ、送られてきた 2 つが一致するかを見ます(二重送信クッキー)。
   const csrf = random();
   res.append('Set-Cookie', `bo_login_csrf=${csrf}; ${COOKIE_BASE}; Max-Age=600`);
-  sendHtml(res, error ? 401 : 200, loginPage(csrf, error));
+  // ログインに失敗したら 400 で画面を出し直します。401 は HTTP の認証(WWW-Authenticate で方式を伝えるもの)の返事なので、
+  // 画面のフォームでのログイン失敗には使いません。
+  sendHtml(res, error ? 400 : 200, loginPage(csrf, error));
 }
 
 async function dashboard(req, res) {

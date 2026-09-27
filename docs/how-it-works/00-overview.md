@@ -208,7 +208,7 @@ docker compose logs --tail=3 cdn-waf ingress storefront api
 URL とコマンドの形は同じです。ログは `kubectl -n lab logs` で見ます。
 ```bash
 docker logs --tail=3 lab-cdn-waf                                        # cdn-waf(クラスタの外なので docker で見る)
-kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=3  # ingress-nginx(1 行 1 JSON。remote_addr・ingress・status)
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=3  # ingress-nginx(アクセスログは 1 行 1 JSON。remote_addr・ingress・status。JSON でない行は ingress-nginx 自身のメッセージ)
 kubectl -n lab logs deploy/storefront --tail=3
 kubectl -n lab logs deploy/api --tail=3
 ```

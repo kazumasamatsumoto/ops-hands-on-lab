@@ -113,7 +113,7 @@ k6 のまとめ(3 分全体):
 
 ```text
     ✗ 'p(95)<1000' p(95)=1.52s
-    http_req_duration..............: avg=617.51ms med=455.94ms max=2.17s p(90)=1.43s p(95)=1.52s
+    http_req_duration..............: avg=617.51ms min=… med=455.94ms max=2.17s p(90)=1.43s p(95)=1.52s
     http_req_failed................: 0.00%  0 out of 32479
     http_reqs......................: 32479  178.953989/s
 ```

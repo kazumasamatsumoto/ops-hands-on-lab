@@ -127,11 +127,16 @@ groups:
         expr: histogram_quantile(0.95, sum by (job, le) (rate(ssr_render_duration_seconds_bucket[5m])))
       # SSR のフォールバック率 = 諦めて空の HTML(CSR)を返した回数 ÷ SSR を試みた回数
       #   分母の ssr_render_duration_seconds_count は、フォールバックした回も含めて 1 回ずつ数える約束です。
+      #   分子と分母は別々の数え札の速さなので、集める時刻のずれで 1 を超えることがあります(API を遅くした直後は 1.68 倍 = 168% になった実測もあります)。
+      #   割合として見せるため、clamp_max で 1(100%)を上限にしています。
       - record: job:ssr_fallback:ratio_rate5m
         expr: |
-          sum by (job) (rate(ssr_fallback_total[5m]))
-          /
-          sum by (job) (rate(ssr_render_duration_seconds_count[5m]))
+          clamp_max(
+            sum by (job) (rate(ssr_fallback_total[5m]))
+            /
+            sum by (job) (rate(ssr_render_duration_seconds_count[5m])),
+            1
+          )
       - record: job:ssr_errors:rate5m
         expr: sum by (job) (rate(ssr_errors_total[5m]))
 

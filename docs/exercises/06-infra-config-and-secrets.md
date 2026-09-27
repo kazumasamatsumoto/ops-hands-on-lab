@@ -133,7 +133,7 @@ CCv2 では、リポジトリの `manifest.json` に aspect・エンドポイン
 LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh
 kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
 kubectl -n lab get configmap lab-environment -o yaml       # LAB_ENV=d1・EDGE_CACHE=off
-kubectl -n lab get secret lab-secrets -o yaml              # 値は base64 で書き換えただけ。誰でも読める
+kubectl -n lab get secret lab-secrets -o yaml              # 値は base64 で書き換えただけ。読む権限がある人なら誰でも中身を読める
 LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh                      # 戻す
 ```
 
@@ -228,8 +228,8 @@ diff -r /tmp/generated.bak/envs/p1/kustomization.yaml k8s/generated/envs/p1/kust
 **手順 7**: コンテナの設定値は、Docker を触れる人には丸見えです。「環境変数にしたから安全」ではありません。**誰が Docker(本番なら Kubernetes や Cloud Portal)を触れるか** が守りの本体です。
 
 ```text
-BACKOFFICE_PASSWORD=admin
 PGPASSWORD=store
+BACKOFFICE_PASSWORD=admin
 ```
 
 **手順 8**: `.env.staging` は `.gitignore` の 16 行目 `.env.*` で無視されます。`manifest.json` は無視されない(= リポジトリに入る)ので、秘密の値を書いてはいけません。

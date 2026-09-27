@@ -57,7 +57,7 @@
 ### 4.3 レート制限 {#s4-3}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | 2 段で持つ。**cdn-waf(全体)**: IP ごとに 1 秒 20 回(`EDGE_GLOBAL_RATE`)、バースト 80(`EDGE_GLOBAL_BURST`。画面 1 枚で JS・CSS・画像・api をまとめて取りに来るため)。3 つのホスト名で同じ帳簿を使う。**ingress(ログイン)**: `api.lab.localhost` の `/authorizationserver/oauth/token` を IP ごとに 1 秒 1 回、バースト 5(最初の 5 回は待たせずに通す)。本格版は Ingress `api-ratelimit-1` の注釈 `limit-rps: "1"`・`limit-burst-multiplier: "5"`。超えたら 429。api 側ではログインをロックしない。ingress は `X-Forwarded-For` を cdn-waf から来たときだけ信じるので、制限は利用者の IP で効く |
+| 決定 | 2 段で持つ。**cdn-waf(全体)**: IP ごとに 1 秒 20 回(`EDGE_GLOBAL_RATE`)、バースト 80(`EDGE_GLOBAL_BURST`。画面 1 枚で JS・CSS・画像・api をまとめて取りに来るため)。3 つのホスト名で同じ帳簿を使う。**ingress(ログイン)**: `api.lab.localhost` の `/authorizationserver/oauth/token` を IP ごとに 1 秒 1 回、バースト 5(決まりの 1 回に加えて 5 回までは待たせずに通す。続けてなら 6 回まで)。本格版は Ingress `api-ratelimit-1` の注釈 `limit-rps: "1"`・`limit-burst-multiplier: "5"`。超えたら 429。api 側ではログインをロックしない。ingress は `X-Forwarded-For` を cdn-waf から来たときだけ信じるので、制限は利用者の IP で効く |
 | 理由 | 全体の制限は 1 人の送りすぎから全員を守る(外の盾の仕事)。ログインの制限はパスワードの総当たりを遅くする(エンドポイントの持ち物)。1 秒 1 回なら 1 日で最大 86,400 回に抑えられる |
 | 却下した案 | アカウントのロック: 他人の会員名で失敗を重ねて本人を締め出す嫌がらせに使われる。ログインの制限も cdn-waf に置く: CDN を替えたときに消える |
 | 実物 | [cdn-waf/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/cdn-waf/default.conf.template)(`limit_req_zone ... per_ip`)・[ingress/default.conf.template](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/ingress/default.conf.template)(`zone=login`)・[k8s/generated/base/ingress.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/ingress.yaml) |
@@ -105,7 +105,7 @@
 | --- | --- | --- |
 | 攻撃の見本 | 7 本すべて 403 | `tools/attack-samples.sh` |
 | 普通の検索 | 2 本とも 200(誤遮断 0) | 同上 |
-| ログインの試行 | IP ごとに 1 秒 1 回まで。6 回目以降の連打は 429 | 1 秒に 10 回送ると、最初の 6 回(1 回 + バースト 5)が通り、残りが 429 |
+| ログインの試行 | IP ごとに 1 秒 1 回まで。7 回目以降の連打は 429 | 1 秒に 10 回送ると、最初の 6 回(1 回 + バースト 5)が通り、残りが 429 |
 | 外から `/admin/` | すべて 403 | `curl -i http://api.lab.localhost:18080/admin/chaos` |
 | 社外から backoffice | すべて 403 | `lab_outside` のコンテナから開く |
 | トークンの寿命 | 900 秒 | トークンの応答の `expires_in` |

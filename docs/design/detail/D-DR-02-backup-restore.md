@@ -33,7 +33,7 @@ tools/backup.sh
   docker compose exec -T db pg_dump -U store -d store --clean --if-exists --no-owner > backups/store-YYYYMMDD-HHMMSS.sql
 
 tools/restore.sh [ファイル]          (省略すると backups/store-*.sql の一番新しい物)
-  docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q < ファイル
+  docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f - < ファイル
 
 Solr の索引(本格版)… バックアップしない。worker の searchIndexJob が DB から 60 秒ごとに作り直す
 ```

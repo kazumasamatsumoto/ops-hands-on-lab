@@ -57,6 +57,8 @@ CCv2 の見張り(Dynatrace)では「storefront の 5xx の割合」で気づく
    for p in / /p/100001 /login; do curl -s -o /dev/null -w "$p %{http_code}\n" "http://www.lab.localhost:18080$p"; done
    ```
 
+   直前の 30 秒以内にトップや商品の画面を開いていると、その URL だけは cdn-waf の作り置き(壊す前の 200)が返ることがあります。30 秒待ってからもう一度打つと 500 になります。
+
 3. **storefront のログを見る**。1 行が 1 つの JSON になっています。
 
    ```bash

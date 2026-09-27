@@ -78,7 +78,7 @@
 ### 4.6 止めずに入れ替える {#s4-6}
 | 項目 | 内容 |
 | --- | --- |
-| 決定 | 本格版の全 Deployment は `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)。止める合図から最大 20 秒待つ(`terminationGracePeriodSeconds: 20`)。アプリは合図を受けたら受付中の処理を終えてから止まる([BE 方式 4.8](/design/architecture/02-backend#s4-8)) |
+| 決定 | 本格版の storefront・api・backoffice は `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)。worker(定期ジョブ)だけは `Recreate`(入れ替えの間に同じジョブが二重に実行されるのを防ぐため。その間の数十秒はジョブが止まる)。止める合図から最大 20 秒待つ(`terminationGracePeriodSeconds: 20`)。アプリは合図を受けたら受付中の処理を終えてから止まる([BE 方式 4.8](/design/architecture/02-backend#s4-8)) |
 | 理由 | 新しい Pod が準備できてから古い Pod を 1 つ減らすので、更新中も応える台数が減らない |
 | 却下した案 | 全部止めてから入れ替える: 入れ替えの間サイトが止まる |
 | 実物 | [k8s/generated/base/api.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/api.yaml)・[storefront.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/storefront.yaml) |

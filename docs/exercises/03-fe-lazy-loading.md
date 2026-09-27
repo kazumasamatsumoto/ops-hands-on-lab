@@ -119,6 +119,8 @@ chunk-6ORWLTRG.js    | orders-routes            |   5.61 kB |                 1.
 ERROR: process "/bin/sh -c npx ng build --configuration production" did not complete successfully: exit code: 1
 ```
 
+(実際には、この後に同じ意味のまとめの行(`ERROR: failed to build: …`)がもう 2 行続きます。)
+
 **手順 3**: `Lazy chunk files` の欄が消え、注文履歴の部品が最初の JS(`main`)に混ざって、合計が約 4kB 増えます。
 
 ```text
@@ -134,8 +136,8 @@ styles-CTOKCG3W.css  | styles                   |   4.84 kB |                 1.
 **手順 4**: 注文履歴をクリックする前と後で、読み込んだ JS が 1 つ増えます。
 
 ```text
-クリック前: main-….js, chunk-MLVPJDFE.js
-クリック後: main-….js, chunk-MLVPJDFE.js, chunk-6ORWLTRG.js   ← orders-routes のチャンク
+クリック前: chunk-MLVPJDFE.js, main-….js
+クリック後: chunk-MLVPJDFE.js, main-….js, chunk-6ORWLTRG.js   ← orders-routes のチャンク
 ```
 
 ## 5. ここで覚える言葉

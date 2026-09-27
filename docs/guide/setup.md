@@ -101,7 +101,7 @@ k8s/down.sh                # クラスタごと消す(データも消える。�
 | API(api) | http://api.lab.localhost:18080 | 例: http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=ノート |
 | 管理画面(backoffice) | http://backoffice.lab.localhost:18080/backoffice/ | `admin` / `admin`。社内の IP からだけ(この PC は社内扱い) |
 | Grafana | http://localhost:13000 | ダッシュボード。ログインなしで見られます(編集は admin / admin) |
-| Prometheus | http://localhost:19090 | 指標。「Status → Targets」で集め先、「Alerts」でアラート |
+| Prometheus | http://localhost:19090 | 指標。「Status → Target health」で集め先、「Alerts」でアラート |
 | Alertmanager | http://localhost:19093 | 今鳴っているアラート |
 | pager | http://localhost:19094 | 届いた通知の一覧(5 秒ごとに更新) |
 

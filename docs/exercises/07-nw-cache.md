@@ -71,6 +71,8 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
    curl -s -o /dev/null -w "2回目 cache=%header{x-cache-status}\n" http://api.lab.localhost:18080/medias/100005.svg
    ```
 
+   画像は 1 日ためるので、この 1 日のうちにお店のトップをブラウザで開いた(または [QA-1](./11-qa-e2e-regression) の E2E を流した)あとだと、トップに並ぶ画像はもう作り置きされていて、1 回目から `HIT` になります。そのときは `docker compose down -v` の後で試すか、トップに出ない画像(例: `100029.svg`)で試します。
+
 5. **backoffice で変えた値が、キャッシュが切れるまで出ない様子を見る**。ブラウザで http://backoffice.lab.localhost:18080/backoffice/ を開き、`admin` / `admin` でログインし、「トップページのバナー」の見出しを変えて保存します。
    すぐに次を打つと、30 秒ほどは古い見出し、そのあと新しい見出しになります。
 

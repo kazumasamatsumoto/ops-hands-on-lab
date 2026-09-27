@@ -125,8 +125,8 @@ kubectl -n lab get ingress -o custom-columns='NAME:.metadata.name,HOST:.spec.rul
 **手順 1**: 同じ入口に来た 3 つのホスト名が、それぞれ別の窓口(upstream)に振り分けられます。利用者の IP(`client`)はこの PC の 127.0.0.1 です。
 
 ```text
-api.lab.localhost → 172.30.89.13:3001 (status 200 , client 127.0.0.1)
 www.lab.localhost → 172.30.89.14:4000 (status 200 , client 127.0.0.1)
+api.lab.localhost → 172.30.89.12:3001 (status 200 , client 127.0.0.1)
 backoffice.lab.localhost → 172.30.89.11:3001 (status 200 , client 127.0.0.1)
 ```
 
@@ -171,7 +171,7 @@ deny all;
 元に戻した後: 200
 ```
 
-**手順 6**: 偽の `X-Forwarded-For` を付けても 403。ingress は cdn-waf(172.30.89.10)から来たときだけ `X-Forwarded-For` を信じるので、社外から自分で書いた値は無視されます。
+**手順 6**: 偽の `X-Forwarded-For` を付けても 403。cdn-waf が `X-Forwarded-For` を本当の送り元の IP で **上書き** し、ingress は cdn-waf(172.30.89.10)から来たときだけ `X-Forwarded-For` を信じるので、社外から自分で書いた値は届く前に消えています。
 
 ```text
 社外+偽XFF → backoffice: 403

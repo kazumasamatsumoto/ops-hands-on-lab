@@ -96,6 +96,7 @@
 | api | `default-src 'none'; frame-ancestors 'none'`(HTML を返さないので何も読み込ませない) |
 | backoffice | `default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; form-action 'self'; base-uri 'self'; frame-ancestors 'none'`(サーバーで作る HTML、スクリプトなし) |
 
+- backoffice の応答には、上の cdn-waf の CSP とは別に、アプリ(backoffice)自身も `default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; frame-ancestors 'none'` という CSP を付けています([backoffice.js](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/apps/api/src/aspects/backoffice.js))。CSP が 2 つあると、ブラウザは **両方を守る**(どちらにも許されたものだけ通す)ので、実際には厳しいアプリ側が効きます。たとえば cdn-waf が許している `img-src 'self' data:` の画像も、アプリ側に `img-src` が無いので表示されません(今の管理画面は画像を使っていないので困りません)。CSP をどこで付けるかは 1 か所に決めておくと、「設定したのに効かない」を防げます。
 - www の `connect-src` と `img-src` に api の住所があるのは、ブラウザが別オリジンの api から JSON と商品画像を取るためです。
 - Angular を更新して埋め込みスクリプトが変わると、ブラウザに `Refused to execute inline script` と出ます。表示された `sha256-...` を docker-compose.yml の `WWW_CSP` に足し、`docker compose up -d cdn-waf` で反映します。
 

@@ -42,7 +42,7 @@ docker compose down -v
 | API(api) | http://api.lab.localhost:18080 | 例: http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=ノート |
 | 管理画面(backoffice) | http://backoffice.lab.localhost:18080/backoffice/ | `admin` / `admin`。社内の IP からだけ(この PC は「社内」扱い) |
 | Grafana(ダッシュボード) | http://localhost:13000 | ログインなしで閲覧できます。ホームが「サンプルストア SLO」です(編集は admin / admin) |
-| Prometheus(指標) | http://localhost:19090 | 「Status → Targets」で収集先、「Alerts」でアラートの状態 |
+| Prometheus(指標) | http://localhost:19090 | 「Status → Target health」で収集先、「Alerts」でアラートの状態 |
 | Alertmanager(通知のまとめ役) | http://localhost:19093 | 今鳴っているアラート |
 | pager(通知の受け口) | http://localhost:19094 | Alertmanager から届いた通知の一覧(5 秒ごとに更新) |
 

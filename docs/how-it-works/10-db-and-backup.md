@@ -60,7 +60,7 @@ api・backoffice・worker は同じ倉庫を使い、決まった数の **通路
      → backups/store-年月日-時分秒.sql
 
  tools/restore.sh [ファイル]
-   docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q < ファイル
+   docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f - < ファイル
      → 台本を上から実行。途中で 1 つでも失敗したら全部取り消す(中途半端な状態で「成功」と言わない)
 ```
 
@@ -173,7 +173,7 @@ docker compose exec -T db pg_dump -U store -d store --clean --if-exists --no-own
 [tools/restore.sh](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/restore.sh):
 
 ```bash
-docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q < "$file" > /dev/null
+docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f - < "$file" > /dev/null
 ```
 
 - `ON_ERROR_STOP=1` … エラーが出たらそこで止める。
@@ -218,9 +218,9 @@ DB は StatefulSet `db`(Pod の名前は `db-0`)として動き、データは P
 ```bash
 mkdir -p backups
 kubectl -n lab exec -i db-0 -- pg_dump -U store -d store --clean --if-exists --no-owner > backups/store-k8s.sql
-kubectl -n lab exec -i db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q < backups/store-k8s.sql > /dev/null
+kubectl -n lab exec -i db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f - < backups/store-k8s.sql > /dev/null
 ```
-本格版用のバックアップ・復元のスクリプトはありません(`tools/backup.sh`・`tools/restore.sh` は軽量版の `docker compose exec` 用です)。上の 2 行を手で打ちます。1 行目がバックアップ、2 行目が復元で、中身は軽量版のスクリプトと同じ `pg_dump`・`psql` です。`k8s/down.sh` はクラスタごと保存場所も消すので、残したいデータは先に手元(`backups/`)に取っておきます。
+本格版用のバックアップ・復元のスクリプトはありません(`tools/backup.sh`・`tools/restore.sh` は軽量版の `docker compose exec` 用です)。上のコマンドを手で打ちます(`mkdir` は置き場所のフォルダを作るだけです)。`pg_dump` の行がバックアップ、`psql` の行が復元で、中身は軽量版のスクリプトと同じ `pg_dump`・`psql` です。`k8s/down.sh` はクラスタごと保存場所も消すので、残したいデータは先に手元(`backups/`)に取っておきます。
 :::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}

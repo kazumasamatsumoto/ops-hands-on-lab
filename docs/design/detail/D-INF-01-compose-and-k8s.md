@@ -76,7 +76,7 @@
 | backoffice | Deployment(`ASPECT=backoffice`) | 1 | 50m / 96Mi / 192Mi | 同上 | Ingress `backoffice`(IP フィルタ) |
 | worker | Deployment(`ASPECT=backgroundProcessing`) | 1 | 50m / 96Mi / 192Mi | 同上 | なし(Service は指標の収集用) |
 
-- どれも `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)、停止の猶予 20 秒(止める前に `preStop` で 5 秒待つ)。
+- storefront・api・backoffice は `RollingUpdate`(`maxSurge: 1`、`maxUnavailable: 0`)。worker だけは `Recreate`(古い Pod を止めてから新しい Pod を起動)で、入れ替えの間に定期ジョブが二重に動かないようにしています。どれも停止の猶予 20 秒(止める前に `preStop` で 5 秒待つ)。
 - 秘密の値(`PGPASSWORD`・`BACKOFFICE_PASSWORD`)は Secret `lab-secrets` から `secretKeyRef` で読みます。manifest には鍵の名前だけを書き、値は書きません。
 - db・Solr・観測・ingress-nginx の定義は render.mjs の対象外で、[k8s/platform/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/platform)(Namespace・Secret・DB・Solr `solr:9.10.1-slim`)、[k8s/observability/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/observability)(指標・ログ・トレース・Grafana)、[k8s/vendor/ingress-nginx/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/vendor/ingress-nginx)(版を固定した写し)に置きます。
 - 本格版では manifest の `tracing.otlpEndpoint` から、4 つの Deployment に `OTEL_EXPORTER_OTLP_ENDPOINT=http://otel-collector:4318` が付きます(軽量版には付けません)。

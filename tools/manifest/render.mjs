@@ -105,8 +105,14 @@ function workload({ service, image, port, replicas, env, secretEnv, resources, r
     spec: {
       replicas,
       selector: { matchLabels: { 'app.kubernetes.io/name': service } },
-      // ローリング更新: 新しい Pod が準備できてから古い Pod を 1 つずつ止めます(止めずに入れ替える)
-      strategy: { type: 'RollingUpdate', rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } },
+      // ローリング更新: 新しい Pod が準備できてから古い Pod を 1 つずつ止めます(止めずに入れ替える)。
+      // ただし worker(定期ジョブ)だけは Recreate: 古い Pod を止めてから新しい Pod を起動します。
+      // ローリング更新だと入れ替えの間に 2 台が同時に動き、同じ定期ジョブが二重に実行されるためです
+      // (在庫の取り込みが 2 回走る、など。定期ジョブの二重実行は本番でもよくある事故です)。
+      strategy:
+        service === 'worker'
+          ? { type: 'Recreate' }
+          : { type: 'RollingUpdate', rollingUpdate: { maxUnavailable: 0, maxSurge: 1 } },
       template: {
         metadata: { labels: labels(service, extraLabels), annotations: { 'lab/metrics-port': String(port) } },
         spec: {

@@ -71,7 +71,7 @@
           "configurations": {
             "production": {
               // 【性能の予算(budgets)】最初に読み込む JS・CSS の合計サイズの上限です。
-              // いまの大きさは約 320kB。400kB を超えると警告、450kB を超えると「ビルドが失敗」します。
+              // いまの大きさは約 336kB。400kB を超えると警告、450kB を超えると「ビルドが失敗」します。
               // 演習: 大きなライブラリを最初の画面で import すると initial が増え、
               //   "bundle initial exceeded maximum budget" のエラーで docker build も止まります。
               //   遅延読み込み(app.routes.ts の loadChildren)の中へ移すと、予算内に戻ります。

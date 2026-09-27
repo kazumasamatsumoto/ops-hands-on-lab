@@ -12,7 +12,7 @@ CCv2 でいうと **JS Storefront(Composable Storefront を SSR で動かすも�
 | URL | 中身 | CMS 駆動? |
 | --- | --- | --- |
 | `/` | トップ。`cms/pages?pageType=ContentPage&pageLabelOrId=homepage` の部品を並べる | はい |
-| `/p/:code` | 商品詳細(CCv2 の商品ページの URL の形)。`cms/pages?pageType=ProductPage&code=...` の部品を並べる。無い商品は **HTTP 404** | はい |
+| `/p/:code` | 商品詳細(SAP Commerce のアクセラレーター由来の商品ページの URL の形。Composable Storefront も互換のために受け付ける)。`cms/pages?pageType=ProductPage&code=...` の部品を並べる。無い商品は **HTTP 404** | はい |
 | `/c/:code` | 分類ページ(例 `/c/kitchen`。分類は `stationery`・`kitchen`・`living`・`digital`)。`cms/pages?pageType=CategoryPage&code=...` の部品(分類のバナーと商品の並び)を並べる。無い分類は **HTTP 404**。メニューの分類のリンクは今は検索(`/search?q=分類名`)を指しているので、`/c/...` は URL を直接開いて見る | はい |
 | `/search?q=` | 検索結果。`products/search?query=...` | いいえ |
 | `/login` | ログイン(OAuth のトークンをもらう) | いいえ |

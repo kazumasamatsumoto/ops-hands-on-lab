@@ -34,7 +34,7 @@
 | 0 秒 | api の応答がすべて 3.5 秒遅れる | Grafana の api の p95 が 3.5 秒を超える |
 | 〜3 秒 | storefront の SSR が api(`cms/pages`・`products/{code}`)を待つ | — |
 | 3 秒 | SSR を打ち切り、空の HTML を返す | `X-Render-Mode: fallback`、storefront のログ `event: "ssr_fallback"` |
-| 3 秒〜 | ブラウザが自分で api(`http://api.lab.localhost:18080`)を呼んで画面を作る(さらに 3.5 秒) | 利用者には「読み込み中…」のあとで画面が出る |
+| 3 秒〜 | ブラウザが自分で api(`http://api.lab.localhost:18080`)を呼んで画面を作る(CMS の設計図 → 商品の中身 の順に待つので、さらに 3.5 秒 × 2 回 ≒ 7 秒) | 利用者には「読み込み中…」のあとで画面が出る |
 | 数分 | フォールバック率が 5% を超えて 1 分続く | pager に `SSRFallbackRatioHigh`(ticket) |
 
 - cdn-waf のキャッシュが効いている画面(`/`・`/p/...`・`/search`)と api(`products`・`cms/pages`)は、30 秒のうちは遅れずに返ります(遅くなるのは期限切れのあと)。
@@ -45,7 +45,7 @@
 | 手順 | 見る場所 | 見る物 |
 | --- | --- | --- |
 | 1 | pager | どのアラートか(`SSRFallbackRatioHigh`)、どのサービスか(`job="storefront"`) |
-| 2 | Grafana「storefront(SSR)」の段 | SSR フォールバック率が上がっているか、SSR 描画時間の p95 が 3 秒に張り付いているか |
+| 2 | Grafana「storefront(SSR)」の段 | SSR フォールバック率が上がっているか、SSR 描画時間の p95 が 3 秒を超えているか(打ち切りの回は 3 秒ちょうどより少し長いので「3〜5 秒」の箱に入り、箱の中を均等とみなす計算のため、ほとんどが打ち切りなら p95 は 5 秒近くに見えます) |
 
 ### 4.2 切り分ける(2〜5 分) {#s4-2}
 | 問い | 見る場所 | 答えが「はい」なら |

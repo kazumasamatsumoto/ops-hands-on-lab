@@ -158,7 +158,7 @@ obs: Prometheus(指標)・Alertmanager(通知)・Grafana(ダッシュボード)�
 ## storefront(apps/web)の約束
 - Angular 21 SSR。第 1 版のスイッチ(RENDER_MODE・SSR_WINDOW_BUG・SSR_TIMEOUT_MS・/metrics・JSON ログ・X-Render-Mode)は残す。
 - **CMS 駆動の描画**: 画面ごとに `cms/pages` を取り、スロットの部品の `typeCode` を見て Angular の部品を当てはめて並べる(対応表 `typeCode → コンポーネント` を 1 か所に持つ。知らない typeCode は描かずにログに出す)。これがヘッドレスの核心なので、コードのコメントで丁寧に説明する。
-- ルート: `/`(homepage)、`/search?q=`、`/p/:code`(商品詳細。CCv2 の URL の形に合わせる)、`/c/:code`(分類ページ。CategoryPage)、`/login`、`/my-account/orders`(遅延読み込み)。
+- ルート: `/`(homepage)、`/search?q=`、`/p/:code`(商品詳細。アクセラレーター由来で Composable Storefront も互換のために受け付ける URL の形に合わせる)、`/c/:code`(分類ページ。CategoryPage)、`/login`、`/my-account/orders`(遅延読み込み)。
 - API: SSR 中は `API_INTERNAL_URL`(既定 `http://api:3001`)、ブラウザからは `API_PUBLIC_URL`(既定 `http://api.lab.localhost:18080`、**別オリジン**なので CORS が効く)。画像も `API_PUBLIC_URL/medias/...`。ログインは OAuth のトークン(パスワードグラント)をメモリと sessionStorage に持つ。
 - OpenTelemetry: `OTEL_EXPORTER_OTLP_ENDPOINT` があるときだけ、SSR サーバーの受信と api 呼び出しをトレースに載せ、`traceparent` を api に渡す。
 
@@ -173,5 +173,5 @@ obs: Prometheus(指標)・Alertmanager(通知)・Grafana(ダッシュボード)�
 - 両版: worker の定期ジョブの失敗・止まりを検知するアラート(`cronjob_last_success_timestamp_seconds` が 5 分以上古い)。
 
 ## ドキュメント(docs/)の追加
-- `docs/how-it-works/`: 部品ごとの「仕組み」ページ(約 12 本): 全体の流れ(クリックから DB まで)、cdn-waf、ingress(エンドポイントと IP フィルタ)、Kubernetes の基本(Pod・Deployment・Service・プローブ)、storefront の SSR と CMS 駆動の描画、api(OCC・fields・CORS)、OAuth のトークン、aspect と worker(backgroundProcessing)、検索(Solr と索引)、DB とバックアップ、観測(指標・ログ・トレース)、manifest と環境(d1/s1/p1)。各ページ: 1 リクエストの流れ(図)/ 設定の各行の意味 / 確かめるコマンド / CCv2 ではどこに当たるか / よくある誤解。
+- `docs/how-it-works/`: 部品ごとの「仕組み」ページ(13 本): 全体の流れ(クリックから DB まで)、cdn-waf、ingress(エンドポイントと IP フィルタ)、Kubernetes の基本(Pod・Deployment・Service・プローブ)、storefront の SSR、ヘッドレスと CMS 駆動の描画、api(OCC・fields・CORS)、OAuth のトークン、aspect と worker(backgroundProcessing)、検索(Solr と索引)、DB とバックアップ、観測(指標・ログ・トレース)、manifest と環境(d1/s1/p1)。各ページ: 1 リクエストの流れ(図)/ 設定の各行の意味 / 確かめるコマンド / CCv2 ではどこに当たるか / よくある誤解。
 - 既存の演習 19 本は新しい URL・ホスト名に直す。演習を 2 本足す: 「ネットワーク-3 Ingress とエンドポイント」「ヘッドレス-1 CMS の JSON が画面になるまで」。

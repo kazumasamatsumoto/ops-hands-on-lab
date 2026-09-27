@@ -35,6 +35,8 @@ async function tokenHandler(req, res) {
     return oauthError(res, 400, 'unsupported_grant_type', 'grant_type は password だけに対応しています');
   }
   if (!ALLOWED_CLIENTS.has(body.client_id)) {
+    // 401 を返すときは、どの認証方式で名乗り直せばよいかを WWW-Authenticate で必ず伝えます(HTTP の決まり)。
+    res.set('WWW-Authenticate', 'Basic realm="authorizationserver"');
     return oauthError(res, 401, 'invalid_client', '登録されていないクライアントです');
   }
   if (typeof body.username !== 'string' || typeof body.password !== 'string' || !body.username) {
@@ -75,6 +77,7 @@ async function requireToken(req, res, next) {
   const header = req.get('authorization') ?? '';
   const token = /^bearer /i.test(header) ? header.slice(7).trim() : null;
   if (!token) {
+    res.set('WWW-Authenticate', 'Bearer realm="samplestore"');
     res.status(401).json({ errors: [{ type: 'UnauthorizedError', message: 'ログインが必要です(Authorization: Bearer <トークン>)' }] });
     return;
   }
@@ -84,6 +87,7 @@ async function requireToken(req, res, next) {
     [sha256(token)],
   );
   if (rows.length === 0) {
+    res.set('WWW-Authenticate', 'Bearer realm="samplestore", error="invalid_token"');
     res.status(401).json({ errors: [{ type: 'InvalidTokenError', message: 'トークンが無効か、期限切れです' }] });
     return;
   }

@@ -119,7 +119,7 @@ spec:
                   key: PGPASSWORD
 ```
 
-- `terminationGracePeriodSeconds: 20` … 止める合図(SIGTERM)を送ってから、強制終了まで 20 秒待ちます。api は合図を受けると、受付中のリクエストを片付け、DB の接続を返してから止まります(アプリ側の上限は 10 秒)。
+- `terminationGracePeriodSeconds: 20` … Pod を止め始めてから、強制終了(SIGKILL)までの猶予が 20 秒です。この 20 秒には、止める前の 5 秒待ち(`preStop`)も含まれます。5 秒待ったあとに止める合図(SIGTERM)を送るので、合図から強制終了までは残りの約 15 秒です。api は合図を受けると、受付中のリクエストを片付け、DB の接続を返してから止まります(アプリ側の上限は 10 秒)。
 - `image` … 軽量版と同じイメージです。
 - `env` … 環境変数。`ASPECT: api` で「api の役」になります([仕組み-8](./08-aspects-and-worker))。
 - `secretKeyRef` … パスワードは manifest にも YAML にも値を書かず、Secret `lab-secrets` から読みます。
@@ -152,7 +152,7 @@ spec:
 上の値は [k8s/generated/base/api.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/generated/base/api.yaml) のものです。storefront も同じ値で、readiness だけ `/healthz` を見ます(storefront には DB が無いため)。値は `tools/manifest/render.mjs` が決めていて、変えるときは render.mjs を直して作り直します。
 
 - `startupProbe` … 起動したばかりの間だけの見回りです。2 秒ごとに `/healthz` を見て、通るまで(最大 60 回 = 120 秒)は readiness と liveness を始めません。起動が遅いときに「まだ準備中なのに固まったと思って再起動する」を防ぎます。
-- `readinessProbe` … 5 秒ごとに `/readyz` を見ます。3 秒で返事が無いか、2 回続けて失敗すると `READY 0/1` になり、振り分け先から外れます。api の `/readyz` は「起動の準備が終わり、DB に `SELECT 1` が通る」ときだけ 200 です。
+- `readinessProbe` … 5 秒ごとに `/readyz` を見ます。3 秒で返事が無いときも失敗に数え、2 回続けて失敗すると `READY 0/1` になり、振り分け先から外れます。api の `/readyz` は「起動の準備が終わり、DB に `SELECT 1` が通る」ときだけ 200 です。
 - `livenessProbe` … 10 秒ごとに `/healthz` を見ます。3 回続けて失敗すると **コンテナを再起動** します。`/healthz` は DB を見ません。
 - **なぜ 2 つに分けるか**: DB が止まったとき、api を再起動しても直りません。readiness で「お客さんを回さない」だけにし、liveness(再起動)は「プロセスそのものが固まった」ときだけにします。もし liveness に DB の確認を入れると、DB が止まった瞬間に api が全部再起動を繰り返す、という二次災害になります。
 - storefront の readinessProbe は `/healthz` です(storefront には DB が無いため)。
@@ -249,6 +249,7 @@ kubectl -n lab rollout undo deploy/api        # 1 つ前の版に戻す
 
 # 台数を変える(本来は manifest.json を直して作り直すのが筋。ここでは体験だけ)
 kubectl -n lab scale deploy/api --replicas=3
+kubectl -n lab scale deploy/api --replicas=2   # 戻す(k8s/up.sh をもう一度実行しても manifest の台数に戻ります)
 ```
 
 軽量版(docker compose)には Pod も ReplicaSet もありません。近い物は次のとおりです。
