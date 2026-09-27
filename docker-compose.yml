@@ -143,7 +143,13 @@ services:
       BACKOFFICE_IP_ALLOWLIST: ${BACKOFFICE_IP_ALLOWLIST:-127.0.0.1/32 172.30.89.0/24 172.30.91.0/24}
     volumes:
       - ./ingress/default.conf.template:/etc/nginx/templates/default.conf.template:ro
-      - ./ingress/40-ip-filter.sh:/docker-entrypoint.d/40-ip-filter.sh:ro
+      # スクリプトは直接 /docker-entrypoint.d/ に置かず、起動時に改行の「\r」を取り除いてからそこに置きます。
+      # Windows で取り込んで改行が CRLF になっていても「40-ip-filter.sh: not found」で止まらないようにするためです。
+      - ./ingress/40-ip-filter.sh:/lab/40-ip-filter.sh:ro
+    entrypoint:
+      - /bin/sh
+      - -c
+      - tr -d '\r' < /lab/40-ip-filter.sh > /docker-entrypoint.d/40-ip-filter.sh && chmod +x /docker-entrypoint.d/40-ip-filter.sh && exec /docker-entrypoint.sh nginx -g 'daemon off;'
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/ingress-healthz"]
       interval: 10s
