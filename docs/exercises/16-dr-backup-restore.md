@@ -122,6 +122,8 @@ DELETE 9
 tools/restore.sh  0.05s user 0.02s system 52% cpu 0.144 total
 ```
 
+最後の行は Mac の標準のシェル(zsh)の形で、最後の `0.144 total` が復元にかかった時間です。Windows(WSL2)や Linux の bash では、`real    0m0.144s` の行が同じ意味です。
+
 **手順 6**: 注文は戻りましたが、**`00001009` は戻りません**。バックアップの後に入ったからです。
 
 ```text

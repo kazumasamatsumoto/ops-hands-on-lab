@@ -18,10 +18,10 @@
 | もの | 軽量版 | 本格版 | 入れ方・目安 |
 | --- | --- | --- | --- |
 | Docker Desktop(Mac / Windows)または Docker Engine(Linux) | 必要 | 必要 | Compose は v2.20 以上(`docker compose version` で確認) |
-| Docker に割り当てるメモリ | **8GB** | **8GB** | Docker Desktop の Settings → Resources → Memory |
+| Docker に割り当てるメモリ | **8GB** | **8GB** | Mac は Docker Desktop の Settings → Resources → Memory。Windows(WSL2)は `.wslconfig` で決めます([Windows で使う](/guide/windows#memory)) |
 | ディスクの空き | 5GB | 10GB | イメージのダウンロード分 |
-| kind | 不要 | 必要 | `brew install kind`(Mac、v0.30 以上) |
-| kubectl | 不要 | 必要 | `brew install kubectl`(Docker Desktop に付いてくる物でも可) |
+| kind | 不要 | 必要 | Mac は `brew install kind`(v0.30 以上)。Windows(WSL2)・Linux は [Windows で使う](/guide/windows#full) の手順 |
+| kubectl | 不要 | 必要 | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows(WSL2)・Linux は同上 |
 | Node.js | あると便利 | 必要 | 24 以上(`tools/manifest/render.mjs` を動かすため) |
 | 空いているポート | 18080・13000・19090・19093・19094 | 同じ | 下の「困ったとき」で確かめ方を説明しています |
 
@@ -31,6 +31,10 @@
 :::
 
 以下のコマンドは、どれもリポジトリの一番上のフォルダ(`docker-compose.yml` がある場所)で打ちます。
+
+::: tip Windows の人へ
+Windows では、WSL2(Windows の中で動く Linux)の Ubuntu の中で、このページと同じ bash のコマンドを打ちます。準備のしかたは [Windows で使う(WSL2)](/guide/windows) にまとめています。先にそちらを済ませてください。
+:::
 
 ## `*.localhost` の名前について
 
@@ -134,14 +138,26 @@ api・worker には、遅くする・エラーを返す・メモリをため込�
 
 ## 困ったとき
 
+Windows だけで起きること(お店が 502 で ingress のログに `40-ip-filter.sh: not found`・`docker: command not found`・Windows のポートの予約・改行コード `\r` のエラー・会社のプロキシ など)は、[Windows で使う: 困ったとき](/guide/windows#troubleshooting) にまとめています。
+
 ### ポートがもう使われている(`port is already allocated` / `address already in use`)
 
 別のアプリか、もう片方の版が同じ番号を使っています。
 
 ```bash
-lsof -iTCP:18080 -sTCP:LISTEN     # 18080 を使っているアプリを調べる(13000・19090・19093・19094 も同様)
+# ラボのコンテナが使っていないか(Mac・Windows(WSL2)・Linux 共通)
 docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 ```
+
+ラボ以外のアプリが使っていないかは、PC の種類で調べ方が違います(13000・19090・19093・19094 も同様)。
+
+| PC | 打つ場所 | コマンド |
+| --- | --- | --- |
+| Mac | ターミナル | `lsof -iTCP:18080 -sTCP:LISTEN` |
+| Linux | ターミナル | `ss -ltnp 'sport = :18080'` |
+| Windows | PowerShell(WSL の外) | `Get-NetTCPConnection -LocalPort 18080 -State Listen` |
+
+Windows では、ほかのアプリが使っていなくても、**Windows が予約している番号**に当たって起動できないことがあります。確かめ方と直し方は [Windows で使う: ポートが使えない](/guide/windows#reserved-ports) にあります。
 
 - 軽量版が動いたまま本格版を起動した → `docker compose down` してから `k8s/down.sh` → `k8s/up.sh`
 - 本格版が動いたまま軽量版を起動した → `k8s/down.sh` してから `docker compose up -d`
@@ -149,7 +165,7 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 
 ### メモリが足りない(動きが遅い・コンテナが勝手に落ちる・Pod が Pending のまま)
 
-- Docker Desktop の Settings → Resources → Memory を **8GB** にしてください。
+- Docker Desktop の Settings → Resources → Memory を **8GB** にしてください(Windows(WSL2)ではこの欄が無く、`.wslconfig` で決めます。[Windows で使う](/guide/windows#memory))。
 - 要らないコンテナが動いていないか `docker stats --no-stream` で確かめ、止めます。
 - 本格版で Pod が `Pending` のままなら `kubectl -n lab describe pod <名前>` の最後(Events)に `Insufficient memory` と出ていないか見ます。
 - api だけが落ちるなら、スイッチ `leakMb` が入っていないか確かめます(`tools/chaos.sh status`)。

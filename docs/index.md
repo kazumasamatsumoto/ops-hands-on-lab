@@ -42,7 +42,7 @@ features:
     link: /guide/map
     linkText: 地図を見る
   - title: 準備と起動
-    details: Docker だけで動く軽量版と、Kubernetes(kind)で動く本格版の起動手順です。
+    details: Docker だけで動く軽量版と、Kubernetes(kind)で動く本格版の起動手順です。Windows は WSL2 の Ubuntu で同じ手順を使います。
     link: /guide/setup
     linkText: 準備する
 ---

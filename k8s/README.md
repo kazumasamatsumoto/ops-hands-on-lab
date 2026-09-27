@@ -18,11 +18,23 @@ Kubernetes は kind(Kubernetes IN Docker = Docker のコンテナの中で動く
 
 | もの | 目安・入れ方 |
 | --- | --- |
-| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3〜3.5GB ほど使います。下の「使うメモリ」) |
-| kind | `brew install kind`(Mac)。v0.30 以上 |
-| kubectl | `brew install kubectl`(Docker Desktop に付いてくる物でも可) |
+| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3〜3.5GB ほど使います。下の「使うメモリ」)。Windows(WSL2)では `.wslconfig` で決めます |
+| kind | Mac は `brew install kind`。v0.30 以上。Windows(WSL2 の Ubuntu)・Linux は下の「Windows(WSL2)・Linux で kind と kubectl を入れる」 |
+| kubectl | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows(WSL2)・Linux は同上 |
 | Node.js | 24 以上(`tools/manifest/render.mjs` を動かすため) |
 | 空いているポート | 18080・13000・19090・19093・19094(軽量版と同じ番号) |
+
+### Windows(WSL2)・Linux で kind と kubectl を入れる
+
+Windows では WSL2 の Ubuntu の中で打ちます(準備全体は [docs/guide/windows.md](../docs/guide/windows.md))。版はラボで確かめた物に固定しています(kind v0.30.0 = ノードの Kubernetes v1.34.0、kubectl v1.34.1)。
+
+```bash
+ARCH=$(dpkg --print-architecture)   # ふつうの PC は amd64(ARM の PC なら arm64)
+curl -fsSLo kind "https://kind.sigs.k8s.io/dl/v0.30.0/kind-linux-${ARCH}"
+curl -fsSLo kubectl "https://dl.k8s.io/release/v1.34.1/bin/linux/${ARCH}/kubectl"
+sudo install -m 0755 kind kubectl /usr/local/bin/ && rm kind kubectl
+kind version && kubectl version --client
+```
 
 > **軽量版と本格版は同時に動かせません**(同じポート番号を使うため)。本格版を始める前に、リポジトリの一番上で `docker compose down` してください。
 

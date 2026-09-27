@@ -14,9 +14,12 @@
 | もの | 目安 |
 | --- | --- |
 | Docker Desktop(Mac / Windows)または Docker Engine + Compose v2(Linux) | Compose は `include:` が使える v2.20 以上 |
-| Docker に割り当てるメモリ | **8GB**(ラボ全体の上限はおよそ 2.5GB。残りは余裕です) |
+| Docker に割り当てるメモリ | **8GB**(ラボ全体の上限はおよそ 2.5GB。残りは余裕です)。Windows(WSL2)では `.wslconfig` で決めます |
 | ディスクの空き | 5GB ほど(イメージのダウンロード分) |
 | 空いているポート | 18080・13000・19090・19093・19094 |
+
+**Windows の人へ**: WSL2(Windows の中で動く Linux)の Ubuntu と Docker Desktop を使い、この README と同じ bash のコマンドを Ubuntu の中で打ちます。
+準備の手順(WSL2 の入れ方・メモリの設定・リポジトリを置く場所・困ったとき)は [docs/guide/windows.md](docs/guide/windows.md)(演習サイトの「Windows で使う(WSL2)」)にあります。
 
 ## 起動と停止
 
