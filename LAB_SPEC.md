@@ -135,7 +135,7 @@ obs: Prometheus(指標)・Alertmanager(通知)・Grafana(ダッシュボード)�
 | `manifest.json` と `tools/manifest/render.mjs` | CCv2 の manifest.json とビルド |
 | `k8s/generated/envs/d1|s1|p1`(render.mjs が作る kustomize の差分) | 環境 d1 / s1 / p1 |
 | Prometheus・Grafana・Tempo | Dynatrace(APM) |
-| Loki + Grafana | OpenSearch(ログ) |
+| Loki + Grafana | SAP Cloud Logging(ログ。画面は OpenSearch Dashboards) |
 | worker の定期ジョブ | CronJob(backgroundProcessing で動く) |
 
 ## api(apps/api)の約束(storefront・backoffice・worker・演習が使う)

@@ -36,7 +36,7 @@
 | セキュリティ設計・脆弱性診断 | WAF、レート制限、CSP、認可(IDOR)、秘密情報の管理 | 攻撃に備える | 診断を待たず、**入口で毎回ふるい落とす**仕組みと、アプリの書き方の両方で守る |
 | ネットワーク設計(FW・LB) | CDN・WAF(cdn-waf)、Ingress とエンドポイント(ingress)、キャッシュ、IP フィルタ、CORS | 通り道と入口の制限 | 入口が 2 段になる。外側(CDN・WAF)で**キャッシュ**と攻撃の遮断、内側(エンドポイント)で**ホスト名ごとの振り分けと IP フィルタ**。画面と API は別のホスト名(別オリジン)なので CORS を決める |
 | FW のアクセス制御リスト(社内からだけ通す) | エンドポイントの IP フィルタ(`BACKOFFICE_IP_ALLOWLIST`・`ipFilters.office`) | 送り元の IP で通す・断る | FW の機器ではなく**入口の設定ファイル**に書き、環境ごとに違う(d1・s1 はお店も社内だけ) |
-| システム監視設計(ログ監視・性能監視) | 指標(Prometheus)・ログ(Loki)・トレース(OpenTelemetry・Tempo) | 異常を見つけ、原因を探す | 1 リクエストの道筋(トレース)を `trace_id` でログとつなぐ。CCv2 の案件では Dynatrace・OpenSearch がこの役 |
+| システム監視設計(ログ監視・性能監視) | 指標(Prometheus)・ログ(Loki)・トレース(OpenTelemetry・Tempo) | 異常を見つけ、原因を探す | 1 リクエストの道筋(トレース)を `trace_id` でログとつなぐ。CCv2 の案件では Dynatrace・SAP Cloud Logging(ログの画面は OpenSearch Dashboards)がこの役 |
 | 性能要件(応答 3 秒以内など) | p95 応答時間、JS の予算(budgets)、SSR のタイムアウト | 速さの目標 | 平均ではなく**遅い方の 5% を見る**。ビルドの時点で重すぎる物を止める |
 | 容量計画(サイジング) | 容量計画、メモリ上限(mem_limit / limits)、台数 | 必要な大きさを見積もる | 上限を**わざと決めて**、超えたら落として作り直す(OOMKilled) |
 
@@ -80,7 +80,7 @@ CCv2(SAP Commerce Cloud)の案件の設計書や Cloud Portal の画面に出て
 | JS Storefront / Composable Storefront | Web サーバー + 画面アプリ | storefront(Angular SSR)と CMS 駆動の描画。[CMS の JSON が画面になるまで](/exercises/21-headless-cms) |
 | manifest.json とビルド | 環境構築手順書、デプロイ手順書、パラメータシート | [manifest.json](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/manifest.json) と `node tools/manifest/render.mjs` |
 | 環境 d1・s1・p1 | 開発環境・検証環境・本番環境 | manifest の `environments`、本格版の `k8s/generated/envs/` |
-| Dynatrace・OpenSearch | 性能監視・ログ監視の製品 | Prometheus・Grafana・Tempo(指標とトレース)、Loki(ログ) |
+| Dynatrace・SAP Cloud Logging | 性能監視・ログ監視の製品(ログの画面は OpenSearch Dashboards) | Prometheus・Grafana・Tempo(指標とトレース)、Loki(ログ) |
 | 外部の CDN・WAF(お客さんが別に契約) | 前段の負荷分散装置・WAF 機器 | cdn-waf |
 
 ## 4. なぜ新しいものが出てきたのか

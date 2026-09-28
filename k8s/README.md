@@ -155,7 +155,7 @@ CCv2 では、クラスタ(アプリが動く場所)は SAP の中にあり、CD
 | Secret `lab-secrets` | `k8s/platform/secret.yaml` | Cloud Portal の環境変数・秘密の置き場所 |
 | db・search(Solr) | `k8s/platform/` | SAP が用意する DB・検索サービス |
 | Prometheus + Grafana + Tempo(トレース) | `k8s/observability/` | Dynatrace(指標・APM) |
-| Loki + Alloy + Grafana(ログ) | 同上 | OpenSearch(ログ) |
+| Loki + Alloy + Grafana(ログ) | 同上 | SAP Cloud Logging(ログ。画面は OpenSearch Dashboards) |
 
 ## フォルダの中身
 

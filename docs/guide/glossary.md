@@ -539,6 +539,11 @@
 - **たとえ**: 各部署から記録用紙を回収する係。
 - **ラボで見られる場所**: [config.alloy](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/alloy/config.alloy)。
 
+### SAP Cloud Logging {#sap-cloud-logging}
+- **一言でいうと**: SAP Commerce Cloud(CCv2)でログを集めて検索するサービスの正式な名前(CLS とも書く)。OpenSearch を土台にしていて、見る画面は OpenSearch Dashboards(以前の Kibana)。
+- **たとえ**: サービス名が「保管庫のサービス」、OpenSearch Dashboards が「その保管庫の閲覧室」。Cloud Portal のボタンは閲覧室の名前(OpenSearch)で呼んでいる。
+- **ラボで見られる場所**: ラボでは Loki + Grafana がこの役([仕組み 11](/how-it-works/11-observability#s5))。
+
 ### トレース {#trace}
 - **一言でいうと**: 1 つのリクエストが、どの部品を通って、それぞれ何秒かかったかを 1 本の道筋として記録したもの。
 - **たとえ**: 宅配便の追跡番号。どの営業所をいつ通ったかが全部分かる。

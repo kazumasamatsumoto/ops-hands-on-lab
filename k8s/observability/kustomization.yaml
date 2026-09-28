@@ -10,7 +10,7 @@
 #   本格版用: Prometheus の収集先(Pod を探す)、Alloy(Kubernetes の API からログを読む)、Grafana のデータソース(Tempo を足す)、
 #             ダッシュボード「サンプルストア 1 リクエストの道筋」、otel-collector、Tempo
 #
-# CCv2 との対応: Prometheus + Grafana + Tempo ≒ Dynatrace(指標とトレース)、Loki + Grafana ≒ OpenSearch(ログ)
+# CCv2 との対応: Prometheus + Grafana + Tempo ≒ Dynatrace(指標とトレース)、Loki + Grafana ≒ SAP Cloud Logging(ログ。画面は OpenSearch Dashboards)
 # データは emptyDir(Pod が消えると消える一時置き場)に置きます。ラボなので割り切っています。
 apiVersion: kustomize.config.k8s.io/v1beta1
 kind: Kustomization

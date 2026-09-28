@@ -3,7 +3,7 @@
 // 付けるラベルは軽量版と同じ(project・service・container)にしてあるので、Grafana のダッシュボードのログのパネルはそのまま使えます。
 //
 // cdn-waf はクラスタの外(ただの Docker のコンテナ)なので、ここでは集めません。見るときは docker logs <クラスタ名>-cdn-waf。
-// CCv2 でも、CDN・WAF のログはお客さんの側の契約で見るもので、Cloud Portal のログ(OpenSearch)には入りません。
+// CCv2 でも、CDN・WAF のログはお客さんの側の契約で見るもので、Cloud Portal から開くログ(SAP Cloud Logging の OpenSearch Dashboards)には入りません。
 
 // 1. lab の部屋と ingress-nginx の部屋にいる Pod の一覧を Kubernetes から教えてもらう
 discovery.kubernetes "pods" {

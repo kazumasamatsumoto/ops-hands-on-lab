@@ -8,7 +8,7 @@ title: 仕組み-11 観測(指標・ログ・トレース)
 - 3 種類の見守りの道筋: 指標(Prometheus → ルール → Alertmanager → pager)、ログ(Alloy → Loki)、トレース(OpenTelemetry → Tempo。本格版)。
 - それぞれの設定の 1 行ずつの意味と、Grafana での見方。
 - 1 つのリクエストを `trace_id` で最初から最後まで追う方法。
-- CCv2 の Dynatrace(APM)・OpenSearch(ログ)との対応。
+- CCv2 の Dynatrace(APM)・SAP Cloud Logging(ログ。画面は OpenSearch Dashboards)との対応。
 :::
 
 ## 1. 一言でいうと {#s1}
@@ -321,12 +321,17 @@ tools/chaos.ps1 reset
 | --- | --- |
 | Prometheus + Grafana(指標・ダッシュボード) | Dynatrace(APM。応答時間・エラー率・サービスのつながりを自動で見る) |
 | OpenTelemetry + Tempo(トレース・本格版) | Dynatrace の分散トレース(1 リクエストの道筋。storefront → api → DB) |
-| Loki + Grafana(ログ) | OpenSearch(Cloud Portal から開くログの検索画面) |
-| Alloy(ログを集める) | CCv2 の中でログを集めて OpenSearch に送る仕組み(SAP 側) |
+| Loki + Grafana(ログ) | SAP Cloud Logging(ログのサービス)。Cloud Portal から開くログの検索画面は OpenSearch Dashboards |
+| Alloy(ログを集める) | CCv2 の中でログを集めて SAP Cloud Logging に送る仕組み(SAP 側) |
 | Alertmanager + pager | Dynatrace のアラートの通知先の設定(メール・チャットなど)。案件の連絡網につなぐ |
 | 記録ルール・アラートルール(SLO・バーンレート) | Dynatrace でのしきい値・SLO の設定(案件で何を見張るかを決める) |
 | `cronjob_last_success_timestamp_seconds` | Backoffice の CronJob の履歴と、それを見張る仕組み(案件で用意する) |
-| 1 行 1 JSON のログ | OpenSearch で項目ごとに絞り込めるログの形 |
+| 1 行 1 JSON のログ | OpenSearch Dashboards で項目ごとに絞り込めるログの形 |
+
+::: info 名前の整理: SAP Cloud Logging と OpenSearch
+CCv2 のログの **サービスの名前** は SAP Cloud Logging(CLS とも書きます)です。OpenSearch を土台にしたサービスで、ログを **見る画面** が OpenSearch Dashboards(以前の名前は Kibana)です。
+Cloud Portal のボタンや公式ドキュメントでは、この画面を「OpenSearch」「OpenSearch Logging」と呼んでいることが多いので、「OpenSearch = SAP Cloud Logging の画面」と読み替えてください。
+:::
 
 ## 6. よくある誤解 {#s6}
 

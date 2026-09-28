@@ -53,7 +53,7 @@
  │ 画像: api の /medias/(cdn-waf で 1 日ためる)                           │  [NW][性能]
  └──────────────────────────────────────────────────────────────────────┘
 
- 【見張りの層 = SRE・障害対応】                             (CCv2: Dynatrace・OpenSearch に当たる)
+ 【見張りの層 = SRE・障害対応】                             (CCv2: Dynatrace・SAP Cloud Logging に当たる)
  ┌──────────────┐ 5 秒ごと              ┌─────────────┐    ┌───────┐
  │ Prometheus    │─────────────────────▶│ Alertmanager │──▶│ pager │  [SRE][障害]  D-SRE-02
  │ SLI・バーン    │ storefront・api・     └─────────────┘    └───────┘
@@ -94,7 +94,7 @@
 | `manifest.json` と `tools/manifest/render.mjs` | CCv2 の manifest.json とビルド(ラボ独自の簡単な形) | [tools/manifest/README.md](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/tools/manifest/README.md) |
 | `k8s/generated/envs/d1` ・ `s1` ・ `p1` | 環境 d1(開発)・s1(ステージング)・p1(本番) | [k8s/generated/envs/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/k8s/generated/envs) |
 | Prometheus・Grafana・Tempo | Dynatrace(APM) | [observability/](https://github.com/kazumasamatsumoto/ops-hands-on-lab/tree/main/observability) |
-| Loki + Grafana | OpenSearch(ログ) | [observability/loki/loki.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/loki/loki.yml) |
+| Loki + Grafana | SAP Cloud Logging(ログ。画面は OpenSearch Dashboards) | [observability/loki/loki.yml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/observability/loki/loki.yml) |
 
 ## 3. 箱と設計書の対応(表) {#boxes}
 
