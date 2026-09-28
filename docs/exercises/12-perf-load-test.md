@@ -6,7 +6,7 @@ title: 性能-1 負荷試験で限界を見る
 
 ::: info この演習について
 - 所要時間: 約 20 分
-- 使うもの: 軽量版(docker compose)。`tools/k6.sh`、Prometheus(http://localhost:19090)、Grafana(http://localhost:13000)、`docker stats`
+- 使うもの: 軽量版(docker compose)。`tools/k6.sh`(PowerShell は `tools/k6.ps1`)、Prometheus(http://localhost:19090)、Grafana(http://localhost:13000)、`docker stats`
 - 仕組みはこちら: [仕組み-1 cdn-waf(CDN と WAF)](/how-it-works/01-cdn-waf)・[仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)
 - 関係する設計書: [性能方式](/design/architecture/07-performance)・[D-PERF-05 負荷試験](/design/detail/D-PERF-05-load-test)
 - 用語集: [負荷試験](/guide/glossary#load-test)・[k6](/guide/glossary#k6)・[VU](/guide/glossary#vu)・[ステップ負荷](/guide/glossary#step-load)・[スループット](/guide/glossary#throughput)・[閾値](/guide/glossary#threshold)
@@ -41,19 +41,42 @@ k6(負荷をかける道具)が「仮想の利用者(VU)」を何人も作り、
 
 1. **cdn-waf 経由で段階的に負荷をかける**(約 5 分かかります)。その間、Grafana の「サンプルストア SLO」を開いておきます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/k6.sh ramp.js
    ```
+
+   ```powershell [PowerShell]
+   tools/k6.ps1 ramp.js
+   ```
+
+   :::
 
 2. **結果を読む**。最後にまとめが出ます。`http_req_failed`(失敗の割合)と、合格の基準(`THRESHOLDS`)を見比べてください。
 
 3. **レート制限を避けて、storefront(画面)の限界を見る**。cdn-waf を通さず、Docker のネットワークの中から storefront(`http://storefront:4000`)に直接かけます。
    人数は `--stage 時間:人数` で上書きできます(ここでは 30 秒ずつ 100 → 200 → 400 人)。3 分かかります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    WWW_URL=http://storefront:4000 tools/k6.sh ramp.js -e TARGET=page \
      --stage 30s:100 --stage 30s:100 --stage 30s:200 --stage 30s:200 --stage 30s:400 --stage 30s:400
    ```
+
+   ```powershell [PowerShell]
+   $env:WWW_URL = 'http://storefront:4000'
+   tools/k6.ps1 ramp.js -e TARGET=page `
+     --stage 30s:100 --stage 30s:100 --stage 30s:200 --stage 30s:200 --stage 30s:400 --stage 30s:400
+   Remove-Item Env:WWW_URL     # 終わったら消す(消し忘れると、次の k6 も cdn-waf を通らなくなります)
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   bash の `WWW_URL=… tools/k6.sh` は「その 1 回だけ」環境変数を渡しますが、PowerShell の `$env:WWW_URL = …` は **ターミナルを閉じるまで残ります**。使い終わったら `Remove-Item Env:WWW_URL` で消してください(以後の演習でも同じです)。
+   :::
 
 4. **走っている間、30 秒ごとに Prometheus で数字を見る**。http://localhost:19090 の「Query」で、次の 3 つを実行します(Graph の表示にすると推移が見えます)。
 
@@ -67,9 +90,17 @@ k6(負荷をかける道具)が「仮想の利用者(VU)」を何人も作り、
 
 5. **メモリも見る**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | grep lab-
    ```
+
+   ```powershell [PowerShell]
+   docker stats --no-stream --format '{{.Name}} {{.CPUPerc}} {{.MemUsage}}' | Select-String 'lab-'
+   ```
+
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -149,6 +180,14 @@ k6 のまとめ(3 分全体):
 
 負荷試験は設定を変えていないので、片付けは要りません。試験が終わったら数字が落ち着くのを待ちます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' | grep lab-storefront   # CPU が下がっていればよい
 ```
+
+```powershell [PowerShell]
+docker stats --no-stream --format '{{.Name}} {{.CPUPerc}}' | Select-String 'lab-storefront'   # CPU が下がっていればよい
+```
+
+:::

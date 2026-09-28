@@ -196,7 +196,9 @@ function corsMiddleware(req, res, next) {
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 商品 1 件(整形して見る)
 curl -s http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | python3 -m json.tool | head -20
 
@@ -235,6 +237,50 @@ curl -s -o /dev/null -w '%{http_code}\n' -X OPTIONS \
   http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
 # → 204(知らないオリジンにすると 403)
 ```
+
+```powershell [PowerShell]
+# 商品 1 件(整形して見る。python3 の代わりに ConvertFrom-Json → ConvertTo-Json で整える)
+(curl.exe -s http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | ConvertFrom-Json | ConvertTo-Json -Depth 10) -split "`n" | Select-Object -First 20
+
+# fields で大きさが変わる(バイト数)
+foreach ($f in 'BASIC', 'DEFAULT', 'FULL') {
+  Write-Host -NoNewline ('{0,-8} ' -f $f)
+  curl.exe -s -o NUL -w '%{size_download} bytes\n' `
+    "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=&pageSize=20&fields=$f"
+}
+# → BASIC は約 3KB、FULL は約 25KB
+
+# 無い商品は 404 と決まった形のエラー
+curl.exe -s http://api.lab.localhost:18080/occ/v2/samplestore/products/NO-SUCH
+# → {"errors":[{"type":"UnknownIdentifierError","message":"商品が見つかりません: NO-SUCH"}]}
+
+# ログインが要る所にトークン無しで → 401
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
+
+# CORS: 許したオリジン → Access-Control-Allow-Origin が返る
+curl.exe -sI -H 'Origin: http://www.lab.localhost:18080' `
+  http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | Select-String -Pattern 'access-control|vary'
+# → Vary: Origin
+#   Access-Control-Allow-Origin: http://www.lab.localhost:18080
+#   Access-Control-Expose-Headers: X-Search-Provider
+
+# CORS: 知らないオリジン → Access-Control-Allow-Origin が付かない(ブラウザは JS に渡さない)
+curl.exe -sI -H 'Origin: http://evil.example' `
+  http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | Select-String 'access-control'
+# → (何も出ない)
+
+# 下見(プリフライト)のまね
+curl.exe -s -o NUL -w '%{http_code}\n' -X OPTIONS `
+  -H 'Origin: http://www.lab.localhost:18080' `
+  -H 'Access-Control-Request-Method: GET' `
+  -H 'Access-Control-Request-Headers: authorization' `
+  http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
+# → 204(知らないオリジンにすると 403)
+```
+
+:::
+
+PowerShell の整形(`ConvertTo-Json`)は、python3 の `json.tool` と字下げの幅や項目の並びが少し違います。
 
 ブラウザでは、ログインして注文履歴を開き、開発者ツールの Network で `orders` が 2 行(`OPTIONS` の preflight と `GET`)出ることを確かめます。
 

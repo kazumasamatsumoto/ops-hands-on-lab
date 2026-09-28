@@ -259,7 +259,9 @@ if (endpoint) {
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # Prometheus が集めている先(全部 up = 1 なら OK)
 curl -s 'http://localhost:19090/api/v1/query?query=up' | python3 -c 'import sys,json; [print(r["metric"]["job"], r["value"][1]) for r in json.load(sys.stdin)["data"]["result"]]'
 # → api 1 / backoffice 1 / prometheus 1 / worker 1 / storefront 1(順番は違ってもかまいません)
@@ -275,6 +277,25 @@ tools/k6.sh browse.js -e DURATION=3m -e PAGES=0
 curl -s http://localhost:19093/api/v2/alerts | python3 -c 'import sys,json; [print(a["labels"]["alertname"], a["labels"].get("job"), a["status"]["state"]) for a in json.load(sys.stdin)]'
 tools/chaos.sh reset
 ```
+
+```powershell [PowerShell]
+# Prometheus が集めている先(全部 up = 1 なら OK)
+(curl.exe -s 'http://localhost:19090/api/v1/query?query=up' | ConvertFrom-Json).data.result | ForEach-Object { "$($_.metric.job) $($_.value[1])" }
+# → api 1 / backoffice 1 / prometheus 1 / worker 1 / storefront 1(順番は違ってもかまいません)
+
+# 記録ルールの結果(api の成功率、直近 5 分)。ConvertTo-Json で読みやすく整える
+(curl.exe -s 'http://localhost:19090/api/v1/query?query=job:sli_success:ratio_rate5m' | ConvertFrom-Json | ConvertTo-Json -Depth 10) -split "`n" | Select-Object -First 20
+
+# アラートを鳴らす: api の半分を 500 に → 1〜2 分で pager に ErrorBudgetBurnDemo と ErrorBudgetBurnPage
+#   (Page は「1 時間窓」も見ます。直前 1 時間に負荷試験などで成功の記録がたくさんあると、割合が薄まって Page は鳴りません。
+#    そのときは SRE-2 の手順 1 のとおり Prometheus をまっさらにしてから試します)
+tools/chaos.ps1 set errorRate=0.5
+tools/k6.ps1 browse.js -e DURATION=3m -e PAGES=0
+curl.exe -s http://localhost:19093/api/v2/alerts | ConvertFrom-Json | ForEach-Object { "$($_.labels.alertname) $($_.labels.job) $($_.status.state)" }
+tools/chaos.ps1 reset
+```
+
+:::
 
 **Grafana でログを探す**(http://localhost:13000 → 右上の「サインイン」から `admin` / `admin` でログイン → 左のメニューの Explore(日本語の表示では「探検」)→ データソース Loki。ログインしないままだと、メニューに Explore が出ません)
 

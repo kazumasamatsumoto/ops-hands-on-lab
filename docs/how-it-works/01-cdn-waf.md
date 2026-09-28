@@ -171,7 +171,9 @@ WAF の本体の設定はイメージの中にあり、強さは環境変数で�
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # キャッシュ: 同じ URL を 2 回。1 回目 MISS、2 回目 HIT(30 秒で切れる)
 curl -sI http://www.lab.localhost:18080/p/100001 | grep -i x-cache
 curl -sI http://www.lab.localhost:18080/p/100001 | grep -i x-cache
@@ -201,9 +203,48 @@ EDGE_CACHE=off docker compose up -d cdn-waf
 docker compose up -d cdn-waf
 ```
 
-::: details 本格版(Kubernetes)では
-cdn-waf は **クラスタの外の Docker コンテナ**(名前 `lab-cdn-waf`)として `k8s/up.sh` が起動し、設定ファイルも同じ物を使います。違うのは行き先だけで、kind のノードの 80 番(ingress-nginx)に渡します。キャッシュの ON/OFF は環境(d1・s1・p1)ごとに manifest.json の `cdnCache` で決まり、ConfigMap `lab-environment` の `EDGE_CACHE` を起動のときに読みます(d1 は off)。
-```bash
+```powershell [PowerShell]
+# キャッシュ: 同じ URL を 2 回。1 回目 MISS、2 回目 HIT(30 秒で切れる)
+curl.exe -sI http://www.lab.localhost:18080/p/100001 | Select-String 'x-cache'
+curl.exe -sI http://www.lab.localhost:18080/p/100001 | Select-String 'x-cache'
+# → X-Cache-Status: MISS(前にためた物が期限切れで残っていれば EXPIRED)
+# → X-Cache-Status: HIT
+
+# ログイン中らしい(Authorization あり)なら、ためた物を使わない
+curl.exe -sI -H 'Authorization: Bearer dummy' http://www.lab.localhost:18080/p/100001 | Select-String 'x-cache'
+# → X-Cache-Status: BYPASS
+
+# 商品画像は 1 日ためる(api も Cache-Control: public, max-age=86400 を返す)
+curl.exe -sI http://api.lab.localhost:18080/medias/100001.svg | Select-String -Pattern 'cache-control|x-cache'
+
+# セキュリティヘッダ
+curl.exe -sI http://www.lab.localhost:18080/ | Select-String -Pattern 'content-security-policy|x-frame-options|x-content-type-options|referrer-policy'
+
+# WAF: SQL インジェクションらしい入力は 403(このラボにだけ送ること)
+curl.exe -s -o NUL -w '%{http_code}\n' 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%27%20OR%20%271%27%3D%271'
+# → 403
+
+# 止めた理由(ルール ID)はログに JSON で出る
+docker compose logs cdn-waf | Select-String -Pattern '"ruleId":"[0-9]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Group-Object | Sort-Object Name | Select-Object Count, Name -First 10
+
+# キャッシュを切る(ここ 1 か所)→ 何度打っても X-Cache-Status が BYPASS になる
+$env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf
+# 元に戻す(環境変数を消してから作り直す。消さないと off のまま)
+Remove-Item Env:EDGE_CACHE; docker compose up -d cdn-waf
+```
+
+:::
+
+::: tip PowerShell
+`$env:EDGE_CACHE = 'off'` は同じウィンドウで打つ以後のコマンド全部に効き続けます。元に戻すときは `Remove-Item Env:EDGE_CACHE` を先に打ってから `docker compose up -d cdn-waf` します。
+:::
+
+:::: details 本格版(Kubernetes)では
+cdn-waf は **クラスタの外の Docker コンテナ**(名前 `lab-cdn-waf`)として `k8s/up.sh`(PowerShell では `k8s/up.ps1`)が起動し、設定ファイルも同じ物を使います。違うのは行き先だけで、kind のノードの 80 番(ingress-nginx)に渡します。キャッシュの ON/OFF は環境(d1・s1・p1)ごとに manifest.json の `cdnCache` で決まり、ConfigMap `lab-environment` の `EDGE_CACHE` を起動のときに読みます(d1 は off)。
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker logs --tail=5 lab-cdn-waf
 kubectl -n lab get configmap lab-environment -o jsonpath='{.data.EDGE_CACHE}'; echo
 
@@ -212,8 +253,21 @@ EDGE_CACHE=off LAB_SKIP_BUILD=1 k8s/up.sh
 # 元に戻す(付けなければ環境の値に戻る)
 LAB_SKIP_BUILD=1 k8s/up.sh
 ```
-`k8s/up.sh` は `LAB_ENV` を書かないと p1 になります。d1・s1 で試しているときは `LAB_ENV=d1` のように今の環境も付けてください。
+
+```powershell [PowerShell]
+docker logs --tail=5 lab-cdn-waf
+kubectl -n lab get configmap lab-environment -o jsonpath='{.data.EDGE_CACHE}'; ''
+
+# 一時的にキャッシュを切る: -EdgeCache off を付けて up.ps1 をもう一度(環境の値より優先。cdn-waf のコンテナだけ作り直される)
+k8s/up.ps1 -EdgeCache off -SkipBuild
+# 元に戻す(付けなければ環境の値に戻る)
+k8s/up.ps1 -SkipBuild
+```
+
 :::
+
+`k8s/up.sh` は `LAB_ENV` を書かないと p1 になります。d1・s1 で試しているときは `LAB_ENV=d1`(PowerShell では `-Env d1`)のように今の環境も付けてください。
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

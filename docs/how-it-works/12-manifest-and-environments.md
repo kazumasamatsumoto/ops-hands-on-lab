@@ -171,7 +171,9 @@ kustomize(カスタマイズ)は、「土台の YAML に、環境ごとの差分
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 軽量版と manifest が食い違っていないか(Node.js 24 だけで動く)
 node tools/manifest/render.mjs --check
 # → manifest.json と docker-compose.yml・ingress/default.conf.template は食い違っていません(軽量版の既定値で比べています)。
@@ -198,8 +200,39 @@ kubectl -n lab get configmap lab-environment -o yaml | grep -E 'LAB_ENV|EDGE_CAC
 kubectl -n lab get deploy                        # d1 ならどれも 1/1
 ```
 
-- 環境を切り替えると、`k8s/up.sh` は最後に cdn-waf のコンテナ(`lab-cdn-waf`)を消して作り直します。キャッシュの ON/OFF(`EDGE_CACHE`)は、そのとき ConfigMap `lab-environment` から読みます(d1 は off、s1・p1 は on)。作り直すので、ためていたキャッシュも空になります。
-- イメージを変えていないときは `LAB_SKIP_BUILD=1` を付けると、ビルドを飛ばして早く切り替わります(例: `LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh`)。アプリのコードを直したときは付けません。
+```powershell [PowerShell]
+# 軽量版と manifest が食い違っていないか(Node.js 24 だけで動く)
+node tools/manifest/render.mjs --check
+# → manifest.json と docker-compose.yml・ingress/default.conf.template は食い違っていません(軽量版の既定値で比べています)。
+
+# manifest から YAML を作り直す
+node tools/manifest/render.mjs
+git diff --stat k8s/generated/       # 何が変わったか
+
+# 環境ごとの最終の YAML を見比べる(クラスタは要らない。一時フォルダに書き出して git diff で比べる)
+kubectl kustomize k8s/generated/envs/d1 > "$env:TEMP/d1.yaml"
+kubectl kustomize k8s/generated/envs/p1 > "$env:TEMP/p1.yaml"
+git diff --no-index "$env:TEMP/d1.yaml" "$env:TEMP/p1.yaml" | Select-Object -First 40
+# → replicas の数・LOG_LEVEL・EDGE_CACHE・allowlist-source-range の行が違う
+
+# 1 行書くと裏でリソースが変わる、を体験する
+#   manifest.json の environments.p1.replicas の "api" を 3 にする → render → envs/p1/kustomization.yaml の api が count: 3
+#   (aspects[] の "replicas" は base の値。d1・s1・p1 はどれも environments.*.replicas で上書きするので、
+#    台数を変えたいときは environments.*.replicas を直す)
+Select-String -Path k8s/generated/envs/p1/kustomization.yaml -Pattern 'name: api' -Context 0,1
+
+# 環境を切り替えて起動する(本格版)
+k8s/up.ps1 -Env d1
+kubectl -n lab get configmap lab-environment -o yaml | Select-String -Pattern 'LAB_ENV|EDGE_CACHE|SEARCH_PROVIDER'
+kubectl -n lab get deploy                        # d1 ならどれも 1/1
+```
+
+:::
+
+PowerShell の `git diff --no-index` は、`diff` と同じ「違う行」を `-`・`+` 付きで出します。
+
+- 環境を切り替えると、`k8s/up.sh`(`k8s/up.ps1`)は最後に cdn-waf のコンテナ(`lab-cdn-waf`)を消して作り直します。キャッシュの ON/OFF(`EDGE_CACHE`)は、そのとき ConfigMap `lab-environment` から読みます(d1 は off、s1・p1 は on)。作り直すので、ためていたキャッシュも空になります。
+- イメージを変えていないときは `LAB_SKIP_BUILD=1`(PowerShell は `-SkipBuild`)を付けると、ビルドを飛ばして早く切り替わります(例: `LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh`、PowerShell は `k8s/up.ps1 -Env d1 -SkipBuild`)。アプリのコードを直したときは付けません。
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

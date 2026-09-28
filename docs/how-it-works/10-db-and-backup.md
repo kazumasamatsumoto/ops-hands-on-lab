@@ -181,7 +181,9 @@ docker compose exec -T db psql -U store -d store -v ON_ERROR_STOP=1 --single-tra
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 表の一覧と件数
 docker compose exec db psql -U store -d store -c '\dt'
 docker compose exec db psql -U store -d store -c 'SELECT count(*) FROM products;'     # → 30
@@ -204,24 +206,65 @@ time tools/restore.sh                                                           
 docker compose exec db psql -U store -d store -c "SELECT code, price FROM products ORDER BY code LIMIT 3;"
 ```
 
+```powershell [PowerShell]
+# 表の一覧と件数
+docker compose exec db psql -U store -d store -c '\dt'
+docker compose exec db psql -U store -d store -c 'SELECT count(*) FROM products;'     # → 30
+
+# 今の接続の数(api・backoffice・worker のプールが持っている分)
+docker compose exec db psql -U store -d store -c "SELECT usename, state, count(*) FROM pg_stat_activity WHERE datname='store' GROUP BY 1,2;"
+
+# DB を止める → api の /readyz が 503、/healthz は 200 のまま(コンテナの中の curl なので .exe なし)
+docker compose stop db
+docker compose exec api curl -s http://127.0.0.1:3001/readyz; ''    # → {"status":"not_ready","reason":"db_unreachable"}
+docker compose exec api curl -s http://127.0.0.1:3001/healthz; ''   # → {"status":"ok"}
+docker compose start db
+# しばらくで /readyz が {"status":"ready"} に戻る
+
+# バックアップ → わざと壊す → 復元(RTO を測る)
+tools/backup.ps1
+# → バックアップを取りました: backups/store-20260926-101500.sql (… バイト)
+docker compose exec db psql -U store -d store -c "UPDATE products SET price = 1;"   # わざとの操作ミス
+Measure-Command { tools/restore.ps1 | Out-Default } | Select-Object TotalSeconds | Format-Table   # TotalSeconds = 復元にかかった時間(秒)。Format-Table は、続けて貼り付けたとき次の行の結果より後に表が出るのを防ぐため
+docker compose exec db psql -U store -d store -c "SELECT code, price FROM products ORDER BY code LIMIT 3;"
+```
+
+:::
+
 **RTO と RPO の測り方**
 
 | 言葉 | 一言 | ラボで測るもの |
 | --- | --- | --- |
-| RTO(目標復旧時間) | 止まってから、どれだけの時間で戻すか | 「壊れたと気付いた時刻」から「画面が正しく出た時刻」まで。`time tools/restore.sh` はその一部(作業の時間) |
+| RTO(目標復旧時間) | 止まってから、どれだけの時間で戻すか | 「壊れたと気付いた時刻」から「画面が正しく出た時刻」まで。`time tools/restore.sh`(PowerShell は `Measure-Command`)はその一部(作業の時間) |
 | RPO(目標復旧時点) | どの時点のデータまで戻れればよいか(失ってよいデータの量) | 「最後のバックアップの時刻」から「壊れた時刻」まで。その間の注文や在庫の変化は戻らない |
 
 たとえば 1 日 1 回のバックアップなら、RPO は最悪 1 日です。「1 日分の注文が消えてもよいか」を業務の人と決め、足りなければバックアップを増やすか、別の仕組み(DB の変更の記録を続けて取る方式)を使います。
 
-::: details 本格版(Kubernetes)では
+:::: details 本格版(Kubernetes)では
 DB は StatefulSet `db`(Pod の名前は `db-0`)として動き、データは PersistentVolumeClaim(保存場所の予約票)に置きます([k8s/platform/db.yaml](https://github.com/kazumasamatsumoto/ops-hands-on-lab/blob/main/k8s/platform/db.yaml))。バックアップは Pod の中の `pg_dump` を呼びます。
-```bash
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 mkdir -p backups
 kubectl -n lab exec -i db-0 -- pg_dump -U store -d store --clean --if-exists --no-owner > backups/store-k8s.sql
 kubectl -n lab exec -i db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f - < backups/store-k8s.sql > /dev/null
 ```
-本格版用のバックアップ・復元のスクリプトはありません(`tools/backup.sh`・`tools/restore.sh` は軽量版の `docker compose exec` 用です)。上のコマンドを手で打ちます(`mkdir` は置き場所のフォルダを作るだけです)。`pg_dump` の行がバックアップ、`psql` の行が復元で、中身は軽量版のスクリプトと同じ `pg_dump`・`psql` です。`k8s/down.sh` はクラスタごと保存場所も消すので、残したいデータは先に手元(`backups/`)に取っておきます。
+
+```powershell [PowerShell]
+New-Item -ItemType Directory -Force backups | Out-Null
+# バックアップ: Pod の中でファイルに書き出してから、kubectl cp で手元に取り出す
+kubectl -n lab exec db-0 -- sh -c 'pg_dump -U store -d store --clean --if-exists --no-owner > /tmp/backup.sql'
+kubectl -n lab cp lab/db-0:/tmp/backup.sql backups/store-k8s.sql
+# 復元: 手元のファイルを Pod に送ってから、Pod の中の psql に読ませる
+kubectl -n lab cp backups/store-k8s.sql lab/db-0:/tmp/restore.sql
+kubectl -n lab exec db-0 -- psql -U store -d store -v ON_ERROR_STOP=1 --single-transaction -q -f /tmp/restore.sql
+```
+
 :::
+
+本格版用のバックアップ・復元のスクリプトはありません(`tools/backup.sh`・`tools/restore.sh`(`.ps1`)は軽量版の `docker compose exec` 用です)。上のコマンドを手で打ちます(`mkdir` は置き場所のフォルダを作るだけです)。`pg_dump` の行がバックアップ、`psql` の行が復元で、中身は軽量版のスクリプトと同じ `pg_dump`・`psql` です。PowerShell は `>`・`<` でファイルを受け渡すと文字コードが変わることがあるので、Pod の中で書き出し、`kubectl cp` で運びます。`k8s/down.sh`(`k8s/down.ps1`)はクラスタごと保存場所も消すので、残したいデータは先に手元(`backups/`)に取っておきます。
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

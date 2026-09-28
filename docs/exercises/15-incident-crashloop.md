@@ -6,7 +6,7 @@ title: 障害-2 メモリ不足で再起動を繰り返す
 
 ::: info この演習について
 - 所要時間: 約 20 分(本格版もやるなら +15 分)
-- 使うもの: 軽量版(docker compose)。`curl`、`docker events`、`docker stats`、`tools/chaos.sh`。本格版(kind)があれば CrashLoopBackOff が見られます
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、`docker events`、`docker stats`、`tools/chaos.sh`(PowerShell は `tools/chaos.ps1`)。本格版(kind)があれば CrashLoopBackOff が見られます
 - 仕組みはこちら: [仕組み-3 Kubernetes の基本](/how-it-works/03-kubernetes-basics)・[仕組み-8 aspect と worker](/how-it-works/08-aspects-and-worker)
 - 関係する設計書: [障害対応方式](/design/architecture/08-incident-response)・[インフラ方式](/design/architecture/03-infrastructure)
 - 用語集: [メモリ上限](/guide/glossary#memory-limit)・[OOMKilled](/guide/glossary#oomkilled)・[CrashLoopBackOff](/guide/glossary#crashloopbackoff)・[liveness プローブ](/guide/glossary#liveness-probe)
@@ -46,19 +46,37 @@ api には `leakMb` というスイッチがあり、OCC の API へのリクエ
 
 1. **いまの再起動の回数を見ておく**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker inspect lab-api-1 -f 'restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
    ```
 
+   ```powershell [PowerShell]
+   docker inspect lab-api-1 -f 'restarts={{.RestartCount}} oom={{.State.OOMKilled}}'
+   ```
+
+   :::
+
 2. **別のターミナルで、api の出来事(イベント)を見張る**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker events --filter container=lab-api-1 --filter event=oom --filter event=die --filter event=start --filter event=health_status --format '{{.Time}} {{.Action}}'
    ```
 
+   ```powershell [PowerShell]
+   docker events --filter container=lab-api-1 --filter event=oom --filter event=die --filter event=start --filter event=health_status --format '{{.Time}} {{.Action}}'
+   ```
+
+   :::
+
 3. **動いている api にメモリを溜めさせる**(1 回 5MB)。cdn-waf の作り置きに当たらないよう、検索の言葉を毎回変えます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set leakMb=5
    for i in $(seq 1 60); do
      c=$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=leak$i")
@@ -69,25 +87,60 @@ api には `leakMb` というスイッチがあり、OCC の API へのリクエ
    docker inspect lab-api-1 -f 'restarts={{.RestartCount}}'
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set leakMb=5
+   foreach ($i in 1..60) {
+     $c = curl.exe -s -o NUL -w '%{http_code}' --max-time 5 "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=leak$i"
+     if ($c -ne '200' -or $i % 10 -eq 0) { "req=$i code=$c $(docker stats --no-stream --format '{{.MemUsage}}' lab-api-1)" }
+     Start-Sleep -Milliseconds 200
+   }
+   tools/chaos.ps1 status
+   docker inspect lab-api-1 -f 'restarts={{.RestartCount}}'
+   ```
+
+   :::
+
    ::: warning zsh で `$RANDOM` を使うときの注意
    検索の言葉を `query=$RANDOM` にすると、Mac の標準のシェル(zsh)では `$(...)` の中で毎回同じ数になり、cdn-waf の作り置きに当たってメモリが溜まりません(実際にはまりました)。ここではループの番号 `$i` を使っています。
    :::
 
 4. **起動時からスイッチが入った api にする**(1 回 20MB)。コマンドの前に書いた値は、この起動のときだけ使われます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    CHAOS_LEAK_MB=20 docker compose up -d api
    docker compose ps api        # (healthy) を待つ
    for i in $(seq 1 300); do curl -s -o /dev/null -w '%{http_code}\n' --max-time 5 "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=loop$i"; sleep 0.3; done | sort | uniq -c
    ```
 
+   ```powershell [PowerShell]
+   $env:CHAOS_LEAK_MB = '20'; docker compose up -d api
+   docker compose ps api        # (healthy) を待つ
+   $(foreach ($i in 1..300) { curl.exe -s -o NUL -w '%{http_code}\n' --max-time 5 "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=loop$i"; Start-Sleep -Milliseconds 300 }) | Group-Object | Select-Object Count, Name
+   ```
+
+   :::
+
+   PowerShell では、状態コードごとの回数が `Count` と `Name` の 2 列の表で出ます。
+
    終わったら状態を見ます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose ps api
    docker inspect lab-api-1 -f 'restarts={{.RestartCount}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}'
    docker compose logs api --no-log-prefix --since 5m | grep -c '起動しました'
    ```
+
+   ```powershell [PowerShell]
+   docker compose ps api
+   docker inspect lab-api-1 -f 'restarts={{.RestartCount}} exit={{.State.ExitCode}} oom={{.State.OOMKilled}}'
+   (docker compose logs api --no-log-prefix --since 5m | Select-String '起動しました').Count
+   ```
+
+   :::
 
 5. **Grafana で見る**。「サンプルストア SLO」の「メモリ(RSS。api・backoffice・worker・storefront)」のパネル(`api` の線)に、上がっては 0 に落ちる「のこぎりの歯」の形が出ます。
 
@@ -95,7 +148,9 @@ api には `leakMb` というスイッチがあり、OCC の API へのリクエ
 
 本格版(kind)では、同じことが Kubernetes の言葉で見えます。詳しくは `k8s/README.md`([準備と起動](/guide/setup))を見てください(本格版の api のメモリ上限は 256Mi です)。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 k8s/chaos.sh boot leakMb=20                                                  # 起動時からメモリを溜める api にする
 while true; do curl -s -o /dev/null -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$RANDOM"; sleep 0.3; done   # 別のターミナルで
 kubectl -n lab get pods -l app.kubernetes.io/name=api -w                      # OOMKilled → CrashLoopBackOff
@@ -103,6 +158,17 @@ kubectl -n lab describe pod -l app.kubernetes.io/name=api | grep -A5 'Last State
 kubectl -n lab logs deploy/api --previous                                     # 落ちる前の api のログ
 k8s/chaos.sh boot-reset                                                       # 元に戻す(10 秒ほどで回復)
 ```
+
+```powershell [PowerShell]
+k8s/chaos.ps1 boot leakMb=20                                                 # 起動時からメモリを溜める api にする
+while ($true) { curl.exe -s -o NUL -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$(Get-Random)"; Start-Sleep -Milliseconds 300 }   # 別のターミナルで
+kubectl -n lab get pods -l app.kubernetes.io/name=api -w                      # OOMKilled → CrashLoopBackOff
+kubectl -n lab describe pod -l app.kubernetes.io/name=api | Select-String -Context 0,5 'Last State'   # Reason: OOMKilled / Exit Code: 137
+kubectl -n lab logs deploy/api --previous                                     # 落ちる前の api のログ
+k8s/chaos.ps1 boot-reset                                                      # 元に戻す(10 秒ほどで回復)
+```
+
+:::
 
 ## 4. 何が見えたら成功か
 
@@ -193,10 +259,21 @@ restarts=10 exit=137 oom=true
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose up -d api        # CHAOS_LEAK_MB を付けずに起動 = 起動時の値も 0 に戻る
 docker compose ps api           # (healthy) を待つ
 tools/chaos.sh status           # leakMb が 0 ならよい
 ```
+
+```powershell [PowerShell]
+Remove-Item Env:CHAOS_LEAK_MB -ErrorAction SilentlyContinue   # 手順 4 で入れた環境変数を消す
+docker compose up -d api        # CHAOS_LEAK_MB を付けずに起動 = 起動時の値も 0 に戻る
+docker compose ps api           # (healthy) を待つ
+tools/chaos.ps1 status          # leakMb が 0 ならよい
+```
+
+:::
 
 手順 2 の `docker events` は Ctrl+C で止めます。

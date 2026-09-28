@@ -160,7 +160,9 @@ function decorateHtml(html: string, mode: 'ssr' | 'csr' | 'fallback'): string {
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 誰が描いたか
 curl -sI http://www.lab.localhost:18080/ | grep -i x-render-mode
 # → X-Render-Mode: ssr
@@ -193,15 +195,57 @@ docker compose ps storefront                                           # (health
 docker compose exec storefront node -e "fetch('http://127.0.0.1:4000/metrics').then(r=>r.text()).then(t=>console.log(t.split('\n').filter(l=>/^ssr_/.test(l)).join('\n')))"
 ```
 
+```powershell [PowerShell]
+# 誰が描いたか
+curl.exe -sI http://www.lab.localhost:18080/ | Select-String 'x-render-mode'
+# → X-Render-Mode: ssr
+
+# SSR の HTML には中身がある / CSR の HTML には <app-root> しかない
+@(curl.exe -s http://www.lab.localhost:18080/ | Select-String 'data-cms-type').Count      # → 1 以上
+$env:RENDER_MODE = 'csr'; docker compose up -d storefront
+docker compose ps storefront                                           # (healthy) を待つ(10 秒ほど)
+@(curl.exe -s 'http://www.lab.localhost:18080/?t=csr' | Select-String 'data-cms-type').Count   # → 0(?t= でキャッシュを避ける)
+Remove-Item Env:RENDER_MODE; docker compose up -d storefront           # 元に戻す(環境変数を消してから)
+docker compose ps storefront                                           # (healthy) を待つ
+
+# フォールバック: api を 3.5 秒遅くすると、SSR が 3 秒であきらめる
+tools/chaos.ps1 set latencyMs=3500
+curl.exe -s -o NUL -w '%{http_code} %{time_total}s\n' http://www.lab.localhost:18080/p/100002
+curl.exe -sI http://www.lab.localhost:18080/p/100003 | Select-String -Pattern 'x-render-mode|cache-control'
+# → 200 3.0 秒ほど / X-Render-Mode: fallback / Cache-Control: no-store
+docker compose logs storefront | Select-String 'ssr_fallback' | Select-Object -Last 1
+tools/chaos.ps1 reset
+
+# SSR で壊れる書き方: サーバーで window を触る → 500(ブラウザでは動くのに)
+$env:SSR_WINDOW_BUG = 'true'; docker compose up -d storefront
+docker compose ps storefront                                           # (healthy) を待つ。待たずに打つと 502(まだ起動中)
+curl.exe -s -o NUL -w '%{http_code}\n' http://www.lab.localhost:18080/p/100004     # → 500
+docker compose logs storefront | Select-String 'ssr_error' | Select-Object -Last 1
+Remove-Item Env:SSR_WINDOW_BUG; docker compose up -d storefront        # 元に戻す(環境変数を消してから)
+docker compose ps storefront                                           # (healthy) を待つ
+
+# 指標(storefront の /metrics は外から閉じているので、中から見る)
+docker compose exec storefront node -e "fetch('http://127.0.0.1:4000/metrics').then(r=>r.text()).then(t=>console.log(t.split('\n').filter(l=>/^ssr_/.test(l)).join('\n')))"
+```
+
+:::
+
+::: tip PowerShell
+`$env:RENDER_MODE = 'csr'` や `$env:SSR_WINDOW_BUG = 'true'` は同じウィンドウで打つ以後のコマンド全部に効き続けます。元に戻すときは、上のように `Remove-Item Env:…` で消してから `docker compose up -d storefront` します。
+:::
+
 ::: warning キャッシュに注意
-cdn-waf は `/`・`/p/…`・`/search` の HTML を 30 秒ためます。試すたびに別の商品コード(`100002`・`100003`…)を使うか、`EDGE_CACHE=off docker compose up -d cdn-waf` でキャッシュを切ってから試してください。
+cdn-waf は `/`・`/p/…`・`/search` の HTML を 30 秒ためます。試すたびに別の商品コード(`100002`・`100003`…)を使うか、`EDGE_CACHE=off docker compose up -d cdn-waf`(PowerShell では `$env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf`)でキャッシュを切ってから試してください。
 :::
 
 ブラウザでは、JavaScript を無効にして比べると分かりやすいです(Chrome なら開発者ツールを開いて command+shift+P(Windows は Ctrl+Shift+P)→「Disable JavaScript」(日本語の表示では「JavaScript を無効にする」)と打って選び、再読み込みします)。SSR なら JS なしでも商品名が見え、CSR なら真っ白です。
 
-::: details 本格版(Kubernetes)では
-環境変数は manifest.json の `storefront.ssr.renderMode`・`storefront.ssr.timeoutMs` から Deployment に入ります。一時的に変えるなら次のようにします(戻すときは `k8s/up.sh` をやり直す)。
-```bash
+:::: details 本格版(Kubernetes)では
+環境変数は manifest.json の `storefront.ssr.renderMode`・`storefront.ssr.timeoutMs` から Deployment に入ります。一時的に変えるなら次のようにします(戻すときは `k8s/up.sh`(PowerShell では `k8s/up.ps1`)をやり直す)。
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab set env deploy/storefront RENDER_MODE=csr
 kubectl -n lab rollout status deploy/storefront
 
@@ -212,8 +256,23 @@ kubectl -n lab exec deploy/storefront -- node -e "fetch('http://127.0.0.1:4000/m
 kubectl -n lab set env deploy/storefront RENDER_MODE=ssr
 LAB_SKIP_BUILD=1 k8s/up.sh        # manifest.json の値(ssr)に戻る。d1・s1 なら LAB_ENV も付ける
 ```
-全部の Pod をまとめた数は、Prometheus(http://localhost:19090)で `sum(ssr_fallback_total)` や `sum by (route) (rate(ssr_render_duration_seconds_count[1m]))` のように見ます。Grafana の「サンプルストア SLO」の「storefront(SSR)」の段にも出ます。
+
+```powershell [PowerShell]
+kubectl -n lab set env deploy/storefront RENDER_MODE=csr
+kubectl -n lab rollout status deploy/storefront
+
+# 指標を Pod の中から見る(deploy/storefront は 2 つの Pod の片方だけ)
+kubectl -n lab exec deploy/storefront -- node -e "fetch('http://127.0.0.1:4000/metrics').then(r=>r.text()).then(t=>console.log(t.split('\n').filter(l=>/^ssr_/.test(l)).join('\n')))"
+
+# 戻す(どちらでも可)
+kubectl -n lab set env deploy/storefront RENDER_MODE=ssr
+k8s/up.ps1 -SkipBuild             # manifest.json の値(ssr)に戻る。d1・s1 なら -Env も付ける
+```
+
 :::
+
+全部の Pod をまとめた数は、Prometheus(http://localhost:19090)で `sum(ssr_fallback_total)` や `sum by (route) (rate(ssr_render_duration_seconds_count[1m]))` のように見ます。Grafana の「サンプルストア SLO」の「storefront(SSR)」の段にも出ます。
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

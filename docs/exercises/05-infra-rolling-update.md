@@ -45,69 +45,141 @@ DB を作り直す(初期化する)デプロイではローリングを選べな
 
 1. **ターミナル A で、画面を取り続ける**。1 行に「時刻 と 結果の番号 と かかった秒数」が出ます(200 = 成功)。止めるときは Ctrl+C です。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    while true; do
      printf '%s %s\n' "$(date +%H:%M:%S)" "$(curl -s -o /dev/null -w '%{http_code} %{time_total}' --max-time 5 http://www.lab.localhost:18080/login)"
      sleep 0.2
    done
    ```
 
+   ```powershell [PowerShell]
+   while ($true) {
+     "$(Get-Date -Format HH:mm:ss) $(curl.exe -s -o NUL -w '%{http_code} %{time_total}' --max-time 5 http://www.lab.localhost:18080/login)"
+     Start-Sleep -Milliseconds 200
+   }
+   ```
+
+   :::
+
    `/login` はキャッシュされない画面なので、毎回 cdn-waf → ingress → storefront まで届きます。
 
 2. **ターミナル B で、ふつうに作り直す**(同じ版で「入れ替え」だけをします)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose up -d --force-recreate --no-deps storefront
    ```
+
+   ```powershell [PowerShell]
+   docker compose up -d --force-recreate --no-deps storefront
+   ```
+
+   :::
 
    このラボの storefront は 1 秒ほどで起動するので、ターミナル A にエラーが出ないこともあります(運が良かっただけです)。
    よく見ると、1 回だけ 1 秒ほど待たされた行があるはずです。
 
 3. **起動に時間がかかる新しい版をまねる**。本物のアプリは、起動に数秒〜数十秒かかるのが普通です。ここでは「止めてから 5 秒後に起動する」ことで、それをまねます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose stop storefront; sleep 5; docker compose start storefront
    ```
+
+   ```powershell [PowerShell]
+   docker compose stop storefront; Start-Sleep 5; docker compose start storefront
+   ```
+
+   :::
 
    ターミナル A を見て、エラーがいつからいつまで出たかを確かめます。
 
 4. **ingress のログを見る**。storefront に届かなかった理由が出ています。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs ingress --no-log-prefix --since 1m | grep 'upstream timed out' | head -2
    docker compose logs storefront --no-log-prefix --since 1m | grep -E 'SIGTERM|started'
    ```
+
+   ```powershell [PowerShell]
+   docker compose logs ingress --no-log-prefix --since 1m | Select-String 'upstream timed out' | Select-Object -First 2
+   docker compose logs storefront --no-log-prefix --since 1m | Select-String -Pattern 'SIGTERM|started'
+   ```
+
+   :::
 
 ### 本格版では
 
 本格版(kind)では storefront が 2 台(Pod が 2 つ)で動いていて、ローリング更新ができます。
 軽量版と同じ 18080 番を使うので、先に軽量版を止めてから起動します(初回は 10〜15 分かかります。詳しくは [準備と起動](/guide/setup))。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose down
 k8s/up.sh
 ```
 
-1. ターミナル A で取り続けます(`?t=$RANDOM` を付けるのは、cdn-waf のキャッシュに当たらず毎回 storefront まで届くようにするためです)。
+```powershell [PowerShell]
+docker compose down
+k8s/up.ps1
+```
 
-   ```bash
+:::
+
+1. ターミナル A で取り続けます(`?t=$RANDOM`(PowerShell では `?t=$(Get-Random)`)を付けるのは、cdn-waf のキャッシュに当たらず毎回 storefront まで届くようにするためです)。
+
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    while true; do curl -s -o /dev/null -w '%{http_code}\n' "http://www.lab.localhost:18080/p/100001?t=$RANDOM"; sleep 0.2; done
    ```
 
+   ```powershell [PowerShell]
+   while ($true) { curl.exe -s -o NUL -w '%{http_code}\n' "http://www.lab.localhost:18080/p/100001?t=$(Get-Random)"; Start-Sleep -Milliseconds 200 }
+   ```
+
+   :::
+
 2. ターミナル B で Pod の入れ替わりを見ながら、1 台ずつ入れ替えます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    kubectl -n lab get pods -l app.kubernetes.io/name=storefront -w    # さらに別のターミナルで、Pod の入れ替わりを見続ける
    kubectl -n lab rollout restart deploy/storefront                 # 同じイメージのまま Pod を全部作り直す
    kubectl -n lab rollout status deploy/storefront                  # 「successfully rolled out」で完了
    ```
 
+   ```powershell [PowerShell]
+   kubectl -n lab get pods -l app.kubernetes.io/name=storefront -w    # さらに別のターミナルで、Pod の入れ替わりを見続ける
+   kubectl -n lab rollout restart deploy/storefront                 # 同じイメージのまま Pod を全部作り直す
+   kubectl -n lab rollout status deploy/storefront                  # 「successfully rolled out」で完了
+   ```
+
+   :::
+
 3. 入れ替えの履歴と、1 つ前の版へ戻す(ロールバック)操作も試します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    kubectl -n lab rollout history deploy/storefront
    kubectl -n lab rollout undo deploy/storefront
    ```
+
+   ```powershell [PowerShell]
+   kubectl -n lab rollout history deploy/storefront
+   kubectl -n lab rollout undo deploy/storefront
+   ```
+
+   :::
 
 新しい Pod が 1 つ増え(`maxSurge: 1`)、`READY 1/1` になってから古い Pod が 1 つ `Terminating` になる、をくり返します。
 ターミナル A はずっと `200` のままです。止める前の 5 秒待ち(`preStop`)の間に、ingress-nginx が古い Pod を振り分け先から外すためです。
@@ -181,9 +253,18 @@ storefront のログの時刻は世界標準時なので、日本時間より 9 
 - ターミナル A のループを Ctrl+C で止めます。
 - storefront が動いているか確かめます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose ps storefront                                                 # (healthy) ならよい
 curl -s -o /dev/null -w '%{http_code}\n' http://www.lab.localhost:18080/login   # 200 ならよい
 ```
 
-本格版で入れ替えを試した場合は、そのままで問題ありません(同じ版に入れ替えただけです)。本格版を終えるときは `k8s/down.sh`、軽量版に戻るときはそのあと `docker compose up -d` です。
+```powershell [PowerShell]
+docker compose ps storefront                                                 # (healthy) ならよい
+curl.exe -s -o NUL -w '%{http_code}\n' http://www.lab.localhost:18080/login   # 200 ならよい
+```
+
+:::
+
+本格版で入れ替えを試した場合は、そのままで問題ありません(同じ版に入れ替えただけです)。本格版を終えるときは `k8s/down.sh`(PowerShell では `k8s/down.ps1`)、軽量版に戻るときはそのあと `docker compose up -d` です。

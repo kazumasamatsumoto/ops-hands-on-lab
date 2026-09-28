@@ -6,7 +6,7 @@ title: セキュリティ-3 CSP で外部スクリプトを止める
 
 ::: info この演習について
 - 所要時間: 約 15 分
-- 使うもの: 軽量版(docker compose)。`curl`、ブラウザの開発者ツール(コンソール)
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、ブラウザの開発者ツール(コンソール)
 - 仕組みはこちら: [仕組み-1 cdn-waf(CDN と WAF)](/how-it-works/01-cdn-waf)・[仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)
 - 関係する設計書: [セキュリティ方式](/design/architecture/10-security)・[D-SEC-01 WAF とレート制限](/design/detail/D-SEC-01-waf-and-rate-limit)
 - 用語集: [CSP](/guide/glossary#csp)・[XSS](/guide/glossary#xss)・[セキュリティヘッダ](/guide/glossary#security-headers)
@@ -48,10 +48,19 @@ Angular を更新すると埋め込みスクリプトの指紋が変わること
 
 1. **ヘッダを見る**。ホストごとに CSP が違います(api は「何も読み込ませない」いちばん厳しい形)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -sI http://www.lab.localhost:18080/ | grep -iE 'content-security|x-frame|x-content|referrer'
    echo '--- api ---'; curl -sI http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | grep -i content-security
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -sI http://www.lab.localhost:18080/ | Select-String -Pattern 'content-security|x-frame|x-content|referrer'
+   '--- api ---'; curl.exe -sI http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | Select-String content-security
+   ```
+
+   :::
 
 2. **お店の画面で試す**。http://www.lab.localhost:18080/ を開き、開発者ツール(F12、Mac は option+command+I)の「コンソール」に次を貼ります。
    Chrome で初めてコンソールに貼ると、貼り付けについての警告が出て、貼れないことがあります。そのときは、コンソールに `allow pasting`(Chrome の表示が日本語なら `貼り付けを許可`)と手で打って Enter を押してから、もう一度貼ります。
@@ -146,6 +155,14 @@ CSP があっても、差し込まれる不具合(入力をそのまま HTML に
 
 この演習では設定を変えていません。ブラウザのコンソールで試したことも、ページを閉じれば消えます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 curl -sI http://www.lab.localhost:18080/ | grep -i content-security   # CSP が付いていればよい
 ```
+
+```powershell [PowerShell]
+curl.exe -sI http://www.lab.localhost:18080/ | Select-String content-security   # CSP が付いていればよい
+```
+
+:::

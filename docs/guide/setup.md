@@ -18,12 +18,13 @@
 | もの | 軽量版 | 本格版 | 入れ方・目安 |
 | --- | --- | --- | --- |
 | Docker Desktop(Mac / Windows)または Docker Engine(Linux) | 必要 | 必要 | Compose は v2.20 以上(`docker compose version` で確認) |
-| Docker に割り当てるメモリ | **8GB** | **8GB** | Mac は Docker Desktop の Settings → Resources → Memory。Windows(WSL2)は `.wslconfig` で決めます([Windows で使う](/guide/windows#memory)) |
+| Docker に割り当てるメモリ | **8GB** | **8GB** | Mac は Docker Desktop の Settings → Resources → Memory。Windows は `.wslconfig` で決めます([Windows で使う](/guide/windows#memory)) |
 | ディスクの空き | 5GB | 10GB | イメージのダウンロード分 |
-| kind | 不要 | 必要 | Mac は `brew install kind`(v0.30 以上)。Windows(WSL2)・Linux は [Windows で使う](/guide/windows#full) の手順 |
-| kubectl | 不要 | 必要 | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows(WSL2)・Linux は同上 |
+| kind | 不要 | 必要 | Mac は `brew install kind`(v0.30 以上)。Windows は `winget install Kubernetes.kind`、WSL2・Linux は curl で入れます([Windows で使う](/guide/windows#full)) |
+| kubectl | 不要 | 必要 | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows は `winget install Kubernetes.kubectl`、WSL2・Linux は同上 |
 | Node.js | あると便利 | 必要 | 24 以上(`tools/manifest/render.mjs` を動かすため) |
 | 空いているポート | 18080・13000・19090・19093・19094 | 同じ | 下の「困ったとき」で確かめ方を説明しています |
+| Windows だけ: PowerShell 7 | 必要 | 必要 | `winget install Microsoft.PowerShell`。Windows PowerShell 5.1 では動きません([Windows で使う](/guide/windows)) |
 
 ::: warning 軽量版と本格版は同時に動かさないでください
 両方を同時に動かすと、メモリを 5GB 以上使い、どちらもポート 18080 などを使うので衝突します。
@@ -33,7 +34,10 @@
 以下のコマンドは、どれもリポジトリの一番上のフォルダ(`docker-compose.yml` がある場所)で打ちます。
 
 ::: tip Windows の人へ
-Windows では、WSL2(Windows の中で動く Linux)の Ubuntu の中で、このページと同じ bash のコマンドを打ちます。準備のしかたは [Windows で使う(WSL2)](/guide/windows) にまとめています。先にそちらを済ませてください。
+コマンドの囲みには **「Mac / Linux / WSL」と「PowerShell」の 2 つのタブ** があります。Windows では次のどちらかを選びます。準備のしかたは [Windows で使う](/guide/windows) にまとめているので、先にそちらを済ませてください。
+
+- **WSL2 の Ubuntu**(おすすめ): 「Mac / Linux / WSL」のタブの bash のコマンドを、Ubuntu の中でそのまま打ちます。Mac・Linux とまったく同じコマンドです。
+- **PowerShell 7 + Docker Desktop**(WSL を使えない人向け): 「PowerShell」のタブのコマンドを打ちます。`tools/chaos.sh` などのスクリプトは、同じ名前の `tools/chaos.ps1` を使います。
 :::
 
 ## `*.localhost` の名前について
@@ -55,7 +59,21 @@ Safari は名前の解決を OS に任せるので、macOS 26(Tahoe)より前の
 127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost
 ```
 
-Mac なら `sudo sh -c 'echo "127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost" >> /etc/hosts'` です。
+::: code-group
+
+```bash [Mac / Linux / WSL]
+sudo sh -c 'echo "127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost" >> /etc/hosts'
+```
+
+```powershell [PowerShell]
+# 管理者として開いた PowerShell で(Windows では、確実にするためこの 1 行を入れておくことをおすすめします)
+Add-Content -Path "$env:SystemRoot\System32\drivers\etc\hosts" -Value "`r`n127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost"
+```
+
+:::
+
+::: tip PowerShell では `curl` ではなく `curl.exe`
+PowerShell の `curl` は別のコマンド(Invoke-WebRequest)の別名です。このサイトの「PowerShell」のタブでは、必ず `curl.exe` と書いています(コンテナの中で打つ `docker compose exec api curl …` は Linux の curl なので `.exe` を付けません)。
 :::
 
 18080 番は、この PC の中(127.0.0.1)からだけ開けるようにしています。同じ LAN の別の PC からは届きません(攻撃の見本を外に向けないためにも大事です)。
@@ -64,17 +82,37 @@ Mac なら `sudo sh -c 'echo "127.0.0.1 www.lab.localhost api.lab.localhost back
 
 ### 起動
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose up -d --build
 docker compose ps      # STATUS が healthy になれば準備完了(1〜2 分。loki と alloy は検査が無いので Up だけです)
+curl -s -o /dev/null -w '%{http_code}\n' http://www.lab.localhost:18080/    # 200 ならお店が開いている
 ```
+
+```powershell [PowerShell]
+docker compose up -d --build
+docker compose ps      # STATUS が healthy になれば準備完了(1〜2 分。loki と alloy は検査が無いので Up だけです)
+curl.exe -s -o NUL -w '%{http_code}\n' http://www.lab.localhost:18080/     # 200 ならお店が開いている
+```
+
+:::
 
 ### 止める
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose down        # 止める(DB などのデータは残る)
 docker compose down -v     # 止めて、データも消す(まっさらに戻す)
 ```
+
+```powershell [PowerShell]
+docker compose down        # 止める(DB などのデータは残る)
+docker compose down -v     # 止めて、データも消す(まっさらに戻す)
+```
+
+:::
 
 演習を 1 つ終えるたびに、その演習の「片付け」でスイッチを戻してください。全部終わったら `docker compose down -v` でまっさらに戻せます。
 
@@ -82,7 +120,9 @@ docker compose down -v     # 止めて、データも消す(まっさらに戻�
 
 ### 起動・環境の切り替え・停止
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose down        # 軽量版が動いていたら先に止める
 k8s/up.sh                  # クラスタ作成 → イメージの用意 → 反映 → 全部 Ready まで待つ(初回 10〜15 分)
 kubectl -n lab get pods    # READY がどれも整えば準備完了
@@ -94,7 +134,21 @@ LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh
 k8s/down.sh                # クラスタごと消す(データも消える。次の up.sh でまっさらに作り直される)
 ```
 
-`k8s/up.sh` は何度実行しても大丈夫です。開く場所(URL)は軽量版と同じです。
+```powershell [PowerShell]
+docker compose down        # 軽量版が動いていたら先に止める
+k8s/up.ps1                 # クラスタ作成 → イメージの用意 → 反映 → 全部 Ready まで待つ(初回 10〜15 分)
+kubectl -n lab get pods    # READY がどれも整えば準備完了
+
+# 環境を切り替える(d1 = 開発、s1 = ステージング、p1 = 本番。既定は p1)。-SkipBuild でビルドを飛ばせます
+k8s/up.ps1 -Env d1 -SkipBuild
+k8s/up.ps1 -Env p1 -SkipBuild
+
+k8s/down.ps1               # クラスタごと消す(データも消える。次の up.ps1 でまっさらに作り直される)
+```
+
+:::
+
+`k8s/up.sh`(`k8s/up.ps1`)は何度実行しても大丈夫です。開く場所(URL)は軽量版と同じです。
 本格版だけの操作(Pod を見張る・ローリング更新・台数を増やす・トレースを見る など)は `k8s/README.md` にまとめています。
 
 ## 開く場所(どちらの版も同じ)
@@ -129,6 +183,24 @@ api・worker には、遅くする・エラーを返す・メモリをため込�
 | worker のスイッチを戻す | `tools/chaos.sh worker reset` | `k8s/chaos.sh worker reset` | worker |
 | 起動時の値を変える(作り直しても残す) | `CHAOS_LEAK_MB=20 docker compose up -d api` | `k8s/chaos.sh boot leakMb=20`(戻すのは `boot-reset`) | api |
 
+PowerShell では、`tools/chaos.sh` を `tools/chaos.ps1`、`k8s/chaos.sh` を `k8s/chaos.ps1` に読み替えます(引数は同じ)。起動時の値は、環境変数を入れてから起動します。
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
+tools/chaos.sh status
+CHAOS_LEAK_MB=20 docker compose up -d api    # 起動時の値を変える(この 1 回だけ)
+docker compose up -d api                     # 戻す
+```
+
+```powershell [PowerShell]
+tools/chaos.ps1 status
+$env:CHAOS_LEAK_MB = '20'; docker compose up -d api     # 起動時の値を変える(環境変数はターミナルを閉じるまで残る)
+Remove-Item Env:CHAOS_LEAK_MB; docker compose up -d api  # 戻す(環境変数を消してから起動し直す)
+```
+
+:::
+
 違いのポイント:
 
 - 本格版は、既定の環境 p1(と s1)では api が 2 つ(Pod が 2 つ)動いています(d1 は 1 つ)。`k8s/chaos.sh` は動いている api の Pod 全部に同じ指示を送ります。
@@ -138,16 +210,27 @@ api・worker には、遅くする・エラーを返す・メモリをため込�
 
 ## 困ったとき
 
-Windows だけで起きること(お店が 502 で ingress のログに `40-ip-filter.sh: not found`・`docker: command not found`・Windows のポートの予約・改行コード `\r` のエラー・会社のプロキシ など)は、[Windows で使う: 困ったとき](/guide/windows#troubleshooting) にまとめています。
+Windows だけで起きること(お店が 502 で ingress のログに `40-ip-filter.sh: not found`・`curl` が Invoke-WebRequest のエラーを出す・スクリプトの実行が許可されていない・`docker: command not found`・Windows のポートの予約・改行コード `\r` のエラー・日本語が化ける・会社のプロキシ など)は、[Windows で使う: 困ったとき](/guide/windows#troubleshooting) にまとめています。
 
 ### ポートがもう使われている(`port is already allocated` / `address already in use`)
 
 別のアプリか、もう片方の版が同じ番号を使っています。
 
-```bash
-# ラボのコンテナが使っていないか(Mac・Windows(WSL2)・Linux 共通)
+::: code-group
+
+```bash [Mac / Linux / WSL]
+# ラボのコンテナが使っていないか
 docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 ```
+
+```powershell [PowerShell]
+# ラボのコンテナが使っていないか
+docker ps --format '{{.Names}}\t{{.Ports}}' | Select-String -Pattern '18080|13000|1909[034]'
+# ラボ以外のアプリが使っていないか(OwningProcess がそのアプリのプロセス番号)
+Get-NetTCPConnection -LocalPort 18080 -State Listen
+```
+
+:::
 
 ラボ以外のアプリが使っていないかは、PC の種類で調べ方が違います(13000・19090・19093・19094 も同様)。
 
@@ -155,25 +238,25 @@ docker ps --format '{{.Names}}\t{{.Ports}}' | grep -E '18080|13000|1909[034]'
 | --- | --- | --- |
 | Mac | ターミナル | `lsof -iTCP:18080 -sTCP:LISTEN` |
 | Linux | ターミナル | `ss -ltnp 'sport = :18080'` |
-| Windows | PowerShell(WSL の外) | `Get-NetTCPConnection -LocalPort 18080 -State Listen` |
+| Windows | PowerShell | `Get-NetTCPConnection -LocalPort 18080 -State Listen`(WSL2 を使っている人も、WSL の外の PowerShell で打ちます) |
 
 Windows では、ほかのアプリが使っていなくても、**Windows が予約している番号**に当たって起動できないことがあります。確かめ方と直し方は [Windows で使う: ポートが使えない](/guide/windows#reserved-ports) にあります。
 
-- 軽量版が動いたまま本格版を起動した → `docker compose down` してから `k8s/down.sh` → `k8s/up.sh`
-- 本格版が動いたまま軽量版を起動した → `k8s/down.sh` してから `docker compose up -d`
+- 軽量版が動いたまま本格版を起動した → `docker compose down` してから `k8s/down.sh` → `k8s/up.sh`(PowerShell は `.ps1`)
+- 本格版が動いたまま軽量版を起動した → `k8s/down.sh`(`k8s/down.ps1`)してから `docker compose up -d`
 - 別のアプリ → そのアプリを止めるか、`docker-compose.yml`(または本格版は `k8s/kind-config.yaml`)の番号を変える
 
 ### メモリが足りない(動きが遅い・コンテナが勝手に落ちる・Pod が Pending のまま)
 
-- Docker Desktop の Settings → Resources → Memory を **8GB** にしてください(Windows(WSL2)ではこの欄が無く、`.wslconfig` で決めます。[Windows で使う](/guide/windows#memory))。
+- Docker Desktop の Settings → Resources → Memory を **8GB** にしてください(Windows ではこの欄が無く、`.wslconfig` で決めます。[Windows で使う](/guide/windows#memory))。
 - 要らないコンテナが動いていないか `docker stats --no-stream` で確かめ、止めます。
 - 本格版で Pod が `Pending` のままなら `kubectl -n lab describe pod <名前>` の最後(Events)に `Insufficient memory` と出ていないか見ます。
 - api だけが落ちるなら、スイッチ `leakMb` が入っていないか確かめます(`tools/chaos.sh status`)。
 
 ### `www.lab.localhost` が開けない
 
-- Chrome・Edge・Firefox・curl(7.85 以降)は設定なしで開けます。macOS 26 より前の Safari など一部は、上の「`*.localhost` の名前について」の `/etc/hosts` の 1 行が要ります。
-- `curl` で確かめるとき、`?` の入った URL は zsh(Mac の標準のシェル)では必ず `"..."` で囲みます(囲まないと `no matches found`)。
+- Chrome・Edge・Firefox・curl(7.85 以降)は設定なしで開けます。macOS 26 より前の Safari など一部は、上の「`*.localhost` の名前について」の `/etc/hosts` の 1 行が要ります。Windows の PowerShell は `curl.exe --version` で 7.85 以上かを確かめ、hosts にも 1 行入れておくのが確実です([Windows で使う](/guide/windows))。
+- `curl` で確かめるとき、`?` の入った URL は zsh(Mac の標準のシェル)では必ず `"..."` で囲みます(囲まないと `no matches found`)。PowerShell でも `&` の入った URL は必ず `"..."` で囲みます(囲まないと `&` が別の意味になります)。
 
 ### 管理画面(backoffice)がこの PC からも 403 になる
 
@@ -185,8 +268,8 @@ Windows では、ほかのアプリが使っていなくても、**Windows が�
 | 症状 | 見るところ |
 | --- | --- |
 | 画面が 502・504 になる | storefront か api がまだ起動中です。軽量版は `docker compose ps`、本格版は `kubectl -n lab get pods` で待ちます |
-| 変えたはずのバナー・価格が反映されない | cdn-waf のキャッシュ(30 秒)が効いています。30 秒待つか、`EDGE_CACHE=off docker compose up -d cdn-waf`([ネットワーク-1](/exercises/07-nw-cache)) |
+| 変えたはずのバナー・価格が反映されない | cdn-waf のキャッシュ(30 秒)が効いています。30 秒待つか、`EDGE_CACHE=off docker compose up -d cdn-waf`(PowerShell は `$env:EDGE_CACHE='off'; docker compose up -d cdn-waf`)([ネットワーク-1](/exercises/07-nw-cache)) |
 | Grafana のグラフが空 | 数字は 5 秒ごとに集め、5 分の平均で計算します。サイトを何回か開いて 1〜2 分待ちます |
 | CSP で `Refused to execute inline script ... 'sha256-...'` が出る | Angular の更新で埋め込みスクリプトの指紋が変わりました。README の「CSP の指紋」で足します |
-| 本格版で古いイメージのまま | `k8s/up.sh` をもう一度実行するとイメージを作り直してノードに読み込みます(`kind load`)。ただし名前が同じ `lab/api:local`・`lab/web:local` のままなので、動いている Pod は入れ替わりません。続けて `kubectl -n lab rollout restart deploy/api deploy/backoffice deploy/worker deploy/storefront` で作り直します |
+| 本格版で古いイメージのまま | `k8s/up.sh`(`k8s/up.ps1`)をもう一度実行するとイメージを作り直してノードに読み込みます(`kind load`)。ただし名前が同じ `lab/api:local`・`lab/web:local` のままなので、動いている Pod は入れ替わりません。続けて `kubectl -n lab rollout restart deploy/api deploy/backoffice deploy/worker deploy/storefront` で作り直します |
 | 本格版で kubectl が別のクラスタを見ている | `kubectl config use-context kind-lab` |

@@ -41,34 +41,71 @@ Composable Storefront の案件でも、画面の機能(部品)を足すほど J
 
 1. **いまの大きさを量る**。storefront のイメージの「ビルドの段」だけを動かします(動いているお店は止まりません)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | grep -A8 'Initial chunk files'
    ```
 
+   ```powershell [PowerShell]
+   docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | Select-String 'Initial chunk files' -Context 0,8
+   ```
+
+   :::
+
+   PowerShell では、見つかった行の頭に `>` が付き、その下に続きの 8 行が出ます。
    `Initial`(最初に読む物)と `Lazy`(後から読む物)に分かれて表示されます。
    実際の表示は各行の頭に `#10 5.352` のようなビルドの段の番号と経過秒が付きます(下の「何が見えたら成功か」では省いています)。後ろに `server.mjs` などサーバー用の一覧も続きますが、ここではブラウザ用(最初の一覧)だけを見ます。
    `--no-cache-filter build` は「前に同じ中身でビルドしたことがあっても、ビルドの段をやり直す」指定です。これが無いと、2 回目以降はビルドが省かれ(`CACHED`)、何も表示されません。
 
 2. **予算をわざと下げて、ビルドを落とす**。`apps/web/angular.json` の `"maximumError": "450kB"` を `"300kB"` に書き換えます(エディタで直しても、次のコマンドでも同じです)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp apps/web/angular.json /tmp/angular.json.bak
    sed -i.tmp 's/"maximumError": "450kB"/"maximumError": "300kB"/' apps/web/angular.json && rm apps/web/angular.json.tmp
    docker build --target build --progress=plain apps/web 2>&1 | grep -E 'Initial total|ERROR'
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item apps/web/angular.json "$env:TEMP/angular.json.bak"
+   $f = "$PWD/apps/web/angular.json"
+   [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace '"maximumError": "450kB"', '"maximumError": "300kB"'))
+   docker build --target build --progress=plain apps/web 2>&1 | Select-String -Pattern 'Initial total|ERROR'
+   ```
+
+   :::
+
    終わったら、すぐに元に戻します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp /tmp/angular.json.bak apps/web/angular.json
    grep -n '"maximumError": "450kB"' apps/web/angular.json    # 1 行出ればよい
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item "$env:TEMP/angular.json.bak" apps/web/angular.json
+   Select-String -Path apps/web/angular.json -Pattern '"maximumError": "450kB"'    # 1 行出ればよい
+   ```
+
+   :::
+
 3. **遅延読み込みをやめてみる**。`apps/web/src/app/app.routes.ts` を次のように変えます(変える前にコピーを取ります)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp apps/web/src/app/app.routes.ts /tmp/app.routes.ts.bak
    ```
+
+   ```powershell [PowerShell]
+   Copy-Item apps/web/src/app/app.routes.ts "$env:TEMP/app.routes.ts.bak"
+   ```
+
+   :::
 
    ```diff
     import { NotFoundPage } from './pages/not-found';
@@ -79,10 +116,19 @@ Composable Storefront の案件でも、画面の機能(部品)を足すほど J
    +    children: ORDER_ROUTES,
    ```
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | grep -A6 'Initial chunk files'
    cp /tmp/app.routes.ts.bak apps/web/src/app/app.routes.ts    # 必ず元に戻す
    ```
+
+   ```powershell [PowerShell]
+   docker build --target build --progress=plain --no-cache-filter build apps/web 2>&1 | Select-String 'Initial chunk files' -Context 0,6
+   Copy-Item "$env:TEMP/app.routes.ts.bak" apps/web/src/app/app.routes.ts    # 必ず元に戻す
+   ```
+
+   :::
 
 4. **ブラウザでチャンクが届く瞬間を見る**。http://www.lab.localhost:18080/ を開き、開発者ツール(F12、Mac は option+command+I)の「ネットワーク」タブで「JS」に絞ります。
    画面上の「注文履歴」をクリックすると、その瞬間に `chunk-` で始まる小さなファイルが 1 つ増えます(ログインしていなければ「注文履歴を見るには ログイン してください。」と出ますが、チャンクは読み込まれます)。
@@ -171,9 +217,20 @@ styles-CTOKCG3W.css  | styles                   |   4.84 kB |                 1.
 
 書き換えた 2 つのファイルが元に戻っているか確かめます(戻っていれば「元に戻っています」とだけ表示されます。違いがあると、その行が表示されます)。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 diff /tmp/angular.json.bak apps/web/angular.json && diff /tmp/app.routes.ts.bak apps/web/src/app/app.routes.ts && echo 元に戻っています
 rm -f /tmp/angular.json.bak /tmp/app.routes.ts.bak
 ```
+
+```powershell [PowerShell]
+git diff --no-index "$env:TEMP/angular.json.bak" apps/web/angular.json && git diff --no-index "$env:TEMP/app.routes.ts.bak" apps/web/src/app/app.routes.ts && Write-Output 元に戻っています
+Remove-Item "$env:TEMP/angular.json.bak", "$env:TEMP/app.routes.ts.bak"
+```
+
+:::
+
+PowerShell には `diff` コマンドが無いので、git の「2 つのファイルを比べる」機能(`git diff --no-index`)を使っています。違いがあれば git の形式(`-`/`+` の行)で出ます。
 
 演習のビルドはイメージに名前を付けていないので、動いている storefront には影響しません。ビルドの途中の物を消したいときは `docker builder prune` です(ほかのビルドの途中の物も消えるので注意)。

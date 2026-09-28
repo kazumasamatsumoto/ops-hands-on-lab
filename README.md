@@ -14,16 +14,36 @@
 | もの | 目安 |
 | --- | --- |
 | Docker Desktop(Mac / Windows)または Docker Engine + Compose v2(Linux) | Compose は `include:` が使える v2.20 以上 |
-| Docker に割り当てるメモリ | **8GB**(ラボ全体の上限はおよそ 2.5GB。残りは余裕です)。Windows(WSL2)では `.wslconfig` で決めます |
+| Docker に割り当てるメモリ | **8GB**(ラボ全体の上限はおよそ 2.5GB。残りは余裕です)。Windows では `.wslconfig` で決めます |
 | ディスクの空き | 5GB ほど(イメージのダウンロード分) |
 | 空いているポート | 18080・13000・19090・19093・19094 |
 
-**Windows の人へ**: WSL2(Windows の中で動く Linux)の Ubuntu と Docker Desktop を使い、この README と同じ bash のコマンドを Ubuntu の中で打ちます。
-準備の手順(WSL2 の入れ方・メモリの設定・リポジトリを置く場所・困ったとき)は [docs/guide/windows.md](docs/guide/windows.md)(演習サイトの「Windows で使う(WSL2)」)にあります。
+**Windows の人へ**: 2 つのやり方があります。どちらも準備の手順(入れる物・メモリの設定・リポジトリを置く場所・困ったとき)は [docs/guide/windows.md](docs/guide/windows.md)(演習サイトの「Windows で使う」)にあります。
+
+- **WSL2 の Ubuntu(おすすめ)**: Docker Desktop と WSL2 の Ubuntu を使い、この README と同じ bash のコマンドを Ubuntu の中で打ちます。
+- **PowerShell 7 + Docker Desktop**: Ubuntu を入れずに、下の「PowerShell」の囲みのコマンドを PowerShell 7 で打ちます。`tools/chaos.sh` などのスクリプトは、同じ名前の `tools/chaos.ps1`(引数は同じ)を使います。`curl` は必ず `curl.exe` と書きます。
 
 ## 起動と停止
 
+**Mac / Linux / WSL**
+
 ```bash
+# 起動(初回はイメージの取得とビルドで数分かかります)
+docker compose up -d --build
+
+# 状態を見る(STATUS が healthy になれば準備完了)
+docker compose ps
+
+# 停止(データは残る)
+docker compose down
+
+# 停止して、データ(DB・指標・ログ)も消す = まっさらに戻す
+docker compose down -v
+```
+
+**PowerShell**
+
+```powershell
 # 起動(初回はイメージの取得とビルドで数分かかります)
 docker compose up -d --build
 
@@ -51,8 +71,8 @@ docker compose down -v
 
 見本の会員: `alice` / `bob` / `carol`(パスワードはどれも `password`)。商品は `100001`〜`100030`(例: http://www.lab.localhost:18080/p/100001)。
 
-**`*.localhost` の名前について**: `www.lab.localhost` のように `.localhost` で終わる名前は、Chrome・Edge・Firefox・curl では設定なしで自分の PC(127.0.0.1)になります。
-**Safari** などで開けないときは、`/etc/hosts`(Windows は `C:\Windows\System32\drivers\etc\hosts`)に次の 1 行を足してください(管理者の権限が要ります)。
+**`*.localhost` の名前について**: `www.lab.localhost` のように `.localhost` で終わる名前は、Chrome・Edge・Firefox・curl(7.85 以降)では設定なしで自分の PC(127.0.0.1)になります。
+**Safari** などで開けないときは、`/etc/hosts`(Windows は `C:\Windows\System32\drivers\etc\hosts`)に次の 1 行を足してください(管理者の権限が要ります)。Windows の PowerShell で使う人は、確実にするため最初から足しておくことをおすすめします(管理者の PowerShell で `` Add-Content -Path "$env:SystemRoot\System32\drivers\etc\hosts" -Value "`r`n127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost" ``)。
 
 ```
 127.0.0.1 www.lab.localhost api.lab.localhost backoffice.lab.localhost
@@ -117,6 +137,8 @@ ingress は、利用者の本当の IP を cdn-waf が書く `X-Forwarded-For` �
 
 ## 確かめるコマンド
 
+**Mac / Linux / WSL**
+
 ```bash
 # SSR の HTML に CMS の部品が入っているか(JS なしで見える)
 curl -s http://www.lab.localhost:18080/ | grep -o 'data-cms-type="[^"]*"'
@@ -134,10 +156,31 @@ curl -s -H "Authorization: Bearer $TOKEN" http://api.lab.localhost:18080/occ/v2/
 curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/admin/chaos
 ```
 
+**PowerShell**
+
+```powershell
+# SSR の HTML に CMS の部品が入っているか(JS なしで見える)
+curl.exe -s http://www.lab.localhost:18080/ | Select-String -Pattern 'data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value }
+# キャッシュ(2 回目は X-Cache-Status: HIT。30 秒で切れる)
+curl.exe -sI http://www.lab.localhost:18080/p/100001 | Select-String x-cache
+# 無い商品は 404
+curl.exe -s -o NUL -w '%{http_code}\n' http://www.lab.localhost:18080/p/NO-SUCH-CODE
+# CORS: www のオリジンなら Access-Control-Allow-Origin が返る
+curl.exe -sI -H 'Origin: http://www.lab.localhost:18080' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001 | Select-String access-control
+# トークンをもらって注文を見る
+$TOKEN = (curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=password' | ConvertFrom-Json).access_token
+curl.exe -s -H "Authorization: Bearer $TOKEN" http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
+# 中の人だけの口は外から 403
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/admin/chaos
+```
+
 ### IP フィルタを確かめる(backoffice は社内だけ)
 
 この PC(ホスト)から来た通信は、cdn-waf が「127.0.0.1 から来た」として ingress に伝えるので、社内扱いで通ります。
 「社外」から来た様子は、社外の代わりのネットワーク `lab_outside` に置いたコンテナから見られます。
+
+**Mac / Linux / WSL**
 
 ```bash
 # 社外(lab_outside)から → 403
@@ -153,11 +196,29 @@ BACKOFFICE_IP_ALLOWLIST=172.30.89.0/24 docker compose up -d ingress
 docker compose up -d ingress
 ```
 
+**PowerShell**(`docker run … curlimages/curl` はコンテナの中の Linux の curl なので、そのまま)
+
+```powershell
+# 社外(lab_outside)から → 403
+docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: backoffice.lab.localhost' http://cdn-waf:18080/backoffice/login
+# 社外からでも、お店(www)は誰でも → 200
+docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: www.lab.localhost' http://cdn-waf:18080/
+
+# この PC も社外扱いにする(許す範囲から 127.0.0.1 を外す)→ ブラウザでも 403 になる
+$env:BACKOFFICE_IP_ALLOWLIST = '172.30.89.0/24'; docker compose up -d ingress
+# 元に戻す(環境変数を消してから起動し直す)
+Remove-Item Env:BACKOFFICE_IP_ALLOWLIST; docker compose up -d ingress
+```
+
 今の許す範囲は `docker compose exec ingress cat /etc/nginx/ip-filters/backoffice.conf` で見られます。
 
 ## わざと壊すスイッチ(カオス)
 
-`/admin/chaos` は ingress で「外からは 403」にしているため、切り替えは `tools/chaos.sh` を使います(コンテナの中から直接頼みます)。
+`/admin/chaos` は ingress で「外からは 403」にしているため、切り替えは `tools/chaos.sh`(PowerShell は `tools/chaos.ps1`。引数は同じ)を使います(コンテナの中から直接頼みます)。
+
+**Mac / Linux / WSL**
 
 ```bash
 tools/chaos.sh status                   # api の今の状態
@@ -171,12 +232,27 @@ tools/chaos.sh worker set cronFail=true # worker の定期ジョブを全部失�
 tools/chaos.sh worker reset
 ```
 
-- 起動時の値は `docker-compose.yml` の `CHAOS_*` で決まり、コマンドの前に書いて変えられます(例: `CHAOS_LEAK_MB=20 docker compose up -d api`)。
+**PowerShell**
+
+```powershell
+tools/chaos.ps1 status                   # api の今の状態
+tools/chaos.ps1 set latencyMs=1500       # OCC の API とトークンに 1.5 秒の遅延
+tools/chaos.ps1 set errorRate=0.5        # 半分を 500 エラーに
+tools/chaos.ps1 set leakMb=5             # リクエストのたびに 5MB ずつメモリをため込む(上限 256MB で落ちて再起動)
+tools/chaos.ps1 set idorBug=true         # 他人の注文が見えてしまう(認可の事故)
+tools/chaos.ps1 set sqliBug=true         # 検索の query に SQL インジェクションの穴(cdn-waf の WAF が止める様子を見る)
+tools/chaos.ps1 reset                    # api のスイッチを全部元に戻す
+tools/chaos.ps1 worker set cronFail=true # worker の定期ジョブを全部失敗させる
+tools/chaos.ps1 worker reset
+```
+
+- 起動時の値は `docker-compose.yml` の `CHAOS_*` で決まり、コマンドの前に書いて変えられます(例: `CHAOS_LEAK_MB=20 docker compose up -d api`。PowerShell は `$env:CHAOS_LEAK_MB = '20'; docker compose up -d api`、戻すときは `Remove-Item Env:CHAOS_LEAK_MB; docker compose up -d api`)。
 - 対象が再起動すると、スイッチは起動時の値に戻ります。
 
 ## 調整できるところ(つまみ)
 
 コマンドの前に書くと、その起動のときだけ変えられます(例: `EDGE_CACHE=off docker compose up -d cdn-waf`)。書かなければ既定値に戻ります。
+PowerShell では `$env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf` と書きます。この環境変数はターミナルを閉じるまで残るので、戻すときは `Remove-Item Env:EDGE_CACHE; docker compose up -d cdn-waf` と、消してから起動し直します。
 
 | つまみ | 反映のしかた | 既定 | 意味 |
 | --- | --- | --- | --- |
@@ -201,6 +277,8 @@ Angular を更新すると指紋が変わることがあり、ブラウザの開
 そのときは、表示された `sha256-...` を docker-compose.yml の `WWW_CSP` に足し、`docker compose up -d cdn-waf` で反映します。
 表示を待たずに自分で計算するなら、次のようにします(HTML の中の `<script>` の中身を sha256 にして base64 にしたものが指紋です)。
 
+**Mac / Linux / WSL**
+
 ```bash
 curl -s http://www.lab.localhost:18080/login | python3 -c '
 import sys,re,hashlib,base64
@@ -211,16 +289,31 @@ for a,b in re.findall(r"<script([^>]*)>(.*?)</script>", sys.stdin.read(), re.S):
 printf "%s" "this.media='all'" | openssl dgst -sha256 -binary | base64
 ```
 
+**PowerShell**
+
+```powershell
+$html = curl.exe -s http://www.lab.localhost:18080/login | Out-String
+$sha = [Security.Cryptography.SHA256]::Create()
+foreach ($m in [regex]::Matches($html, '<script([^>]*)>(.*?)</script>', 'Singleline')) {
+  if ($m.Groups[1].Value -match 'src=|json') { continue }
+  'sha256-' + [Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($m.Groups[2].Value)))
+}
+# 属性の中のスクリプト onload="this.media='all'" の指紋(これがあるので 'unsafe-hashes' も要ります)
+[Convert]::ToBase64String($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes("this.media='all'")))
+```
+
 connect-src と img-src に `http://api.lab.localhost:18080` が入っているのは、ブラウザが別オリジンの api から JSON と商品画像を取るためです。
 
 ## 道具(tools/)
+
+どのスクリプトにも、同じ名前の PowerShell 版(`tools/chaos.ps1` など。引数は同じ)があります。Windows の PowerShell 7 ではそちらを使います。
 
 | スクリプト | 何をするか |
 | --- | --- |
 | `tools/chaos.sh` | わざと壊すスイッチの切り替え(上記) |
 | `tools/k6.sh smoke.js` | 主な URL を 1 回ずつ確かめる(スモークテスト。10 秒ほど) |
 | `tools/k6.sh browse.js` | 普通の利用者のまね(トップ → 検索 → 商品詳細)で負荷をかける。`-e VUS=10 -e DURATION=5m` で調整 |
-| `tools/k6.sh ramp.js` | 段階的に負荷を上げる試験。cdn-waf 経由だとレート制限の 429 も見える。`API_URL=http://api:3001 tools/k6.sh ramp.js` で api に直接 |
+| `tools/k6.sh ramp.js` | 段階的に負荷を上げる試験。cdn-waf 経由だとレート制限の 429 も見える。`API_URL=http://api:3001 tools/k6.sh ramp.js`(PowerShell は `$env:API_URL = 'http://api:3001'; tools/k6.ps1 ramp.js`)で api に直接 |
 | `tools/backup.sh` | DB のバックアップを `backups/` に取る(`pg_dump`) |
 | `tools/restore.sh [ファイル]` | バックアップから DB を戻す(`psql`)。省略すると最新のファイル |
 | `tools/e2e.sh` | E2E テスト(トップ → 検索 → 商品詳細 → ログイン → 注文履歴、他人の注文が見えないこと、無い商品の 404)と画面比較を Playwright で流す。基準画像の撮り直しは `tools/e2e.sh --update-snapshots` |
@@ -237,25 +330,43 @@ k6 と Playwright は Docker のイメージ(`grafana/k6:1.8.1`・`mcr.microsoft
 
 ### エラーバジェットの消費(api)
 
+**Mac / Linux / WSL**
+
 ```bash
 tools/chaos.sh set errorRate=0.5
 tools/k6.sh browse.js -e DURATION=3m -e PAGES=0
 ```
 
-1〜2 分で pager(http://localhost:19094)に `ErrorBudgetBurnDemo`(デモ用の短い窓のアラート)と `ErrorBudgetBurnPage`(緊急)が届きます。片付けは `tools/chaos.sh reset` です。
+**PowerShell**
+
+```powershell
+tools/chaos.ps1 set errorRate=0.5
+tools/k6.ps1 browse.js -e DURATION=3m -e PAGES=0
+```
+
+1〜2 分で pager(http://localhost:19094)に `ErrorBudgetBurnDemo`(デモ用の短い窓のアラート)と `ErrorBudgetBurnPage`(緊急)が届きます。片付けは `tools/chaos.sh reset`(`tools/chaos.ps1 reset`)です。
 
 ### 定期ジョブの止まり(worker)
+
+**Mac / Linux / WSL**
 
 ```bash
 # ジョブを全部失敗させ、間隔を 10 秒に縮めて起動し直す
 CHAOS_CRON_FAIL=true CRON_INTERVAL_SECONDS=10 docker compose up -d worker
 ```
 
+**PowerShell**
+
+```powershell
+# ジョブを全部失敗させ、間隔を 10 秒に縮めて起動し直す
+$env:CHAOS_CRON_FAIL = 'true'; $env:CRON_INTERVAL_SECONDS = '10'; docker compose up -d worker
+```
+
 - 約 1〜2 分: `CronJobStaleDemo`(デモ用。1 分以上成功なし)と `CronJobFailureRatioHigh`(失敗率 50% 超え)
 - 約 5〜6 分: `CronJobStale`(本物のしきい値。5 分以上成功なし)
 
 どれも pager に届きます。Grafana の「worker(定期ジョブ)」の段で、失敗の回数と「最後の成功からの時間」が伸びていく様子が見えます。
-片付けは `docker compose up -d worker`(つまみを書かずに起動し直すと既定値に戻ります)。
+片付けは `docker compose up -d worker`(つまみを書かずに起動し直すと既定値に戻ります。PowerShell は `Remove-Item Env:CHAOS_CRON_FAIL, Env:CRON_INTERVAL_SECONDS; docker compose up -d worker`)。
 
 ルールと計算式は `observability/prometheus/rules/` のコメントにあります。SLO(目標)とアラートを持つのは storefront と api です。
 

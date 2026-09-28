@@ -6,7 +6,7 @@ title: DR-1 バックアップから戻す(RTO と RPO を測る)
 
 ::: info この演習について
 - 所要時間: 約 15 分
-- 使うもの: 軽量版(docker compose)。`curl`、`tools/backup.sh`、`tools/restore.sh`、`psql`
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、`tools/backup.sh`・`tools/restore.sh`(PowerShell は `tools/backup.ps1`・`tools/restore.ps1`)、`psql`
 - 仕組みはこちら: [仕組み-10 DB とバックアップ](/how-it-works/10-db-and-backup)
 - 関係する設計書: [DR 方式](/design/architecture/09-disaster-recovery)・[D-DR-02 バックアップと復元](/design/detail/D-DR-02-backup-restore)
 - 用語集: [バックアップ](/guide/glossary#backup)・[リストア(復元)](/guide/glossary#restore)・[RTO](/guide/glossary#rto)・[RPO](/guide/glossary#rpo)
@@ -41,7 +41,9 @@ CCv2 では、バックアップと復元の仕組み(Cloud Portal のバック�
 
 1. **alice のトークンを用意し、今の注文を見る**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080
    TOKEN=$(curl -s $A/authorizationserver/oauth/token \
      -d 'grant_type=password&client_id=storefront&username=alice&password=password' \
@@ -51,40 +53,97 @@ CCv2 では、バックアップと復元の仕組み(Cloud Portal のバック�
    O
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080'
+   $TOKEN = (curl.exe -s "$A/authorizationserver/oauth/token" `
+     -d 'grant_type=password&client_id=storefront&username=alice&password=password' | ConvertFrom-Json).access_token
+   function O { "alice orders: " + ((curl.exe -s -H "Authorization: Bearer $TOKEN" "$A/occ/v2/samplestore/users/current/orders" | ConvertFrom-Json).orders.code -join ', ') }
+   O
+   ```
+
+   :::
+
+   PowerShell では `alice orders: 00001003, 00001002, 00001001` のように、注文番号がコンマ区切りで出ます。
+
 2. **バックアップを取る**。時刻を控えておきます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    date +%T; tools/backup.sh
    ```
 
+   ```powershell [PowerShell]
+   Get-Date -Format HH:mm:ss; tools/backup.ps1
+   ```
+
+   :::
+
 3. **バックアップの後に、新しい注文が入る**(お客様が買い物をした、のまね)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T db psql -U store -d store \
      -c "INSERT INTO orders (code, user_id, status, total, placed) VALUES ('00001009', 1, 'PROCESSING', 770, now()) RETURNING code, total, placed;"
    O
    ```
 
+   ```powershell [PowerShell]
+   docker compose exec -T db psql -U store -d store `
+     -c "INSERT INTO orders (code, user_id, status, total, placed) VALUES ('00001009', 1, 'PROCESSING', 770, now()) RETURNING code, total, placed;"
+   O
+   ```
+
+   :::
+
 4. **事故を起こす**。条件(`WHERE`)を付け忘れた削除です。時刻を控えます。**ここからストップウォッチを始めます**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    date +%T; docker compose exec -T db psql -U store -d store -c "DELETE FROM orders;"
    curl -s -H "Authorization: Bearer $TOKEN" $A/occ/v2/samplestore/users/current/orders; echo
    ```
 
-5. **戻す**。いちばん新しいバックアップが使われます。`time` で機械の作業時間も測ります。
+   ```powershell [PowerShell]
+   Get-Date -Format HH:mm:ss; docker compose exec -T db psql -U store -d store -c "DELETE FROM orders;"
+   curl.exe -s -H "Authorization: Bearer $TOKEN" "$A/occ/v2/samplestore/users/current/orders"; ''
+   ```
 
-   ```bash
+   :::
+
+5. **戻す**。いちばん新しいバックアップが使われます。`time`(PowerShell は `Measure-Command`)で機械の作業時間も測ります。
+
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    time tools/restore.sh
    ```
 
+   ```powershell [PowerShell]
+   Measure-Command { tools/restore.ps1 | Out-Default } | Select-Object TotalSeconds
+   ```
+
+   :::
+
 6. **戻ったことを確かめる**。確かめ終わった時刻で **ストップウォッチを止めます**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    O
    docker compose exec -T db psql -U store -d store -c 'select count(*) from orders' -c "select code from orders where code='00001009'"
    date +%T
    ```
+
+   ```powershell [PowerShell]
+   O
+   docker compose exec -T db psql -U store -d store -c "select count(*) from orders" -c "select code from orders where code='00001009'"
+   Get-Date -Format HH:mm:ss
+   ```
+
+   :::
 
 7. **RTO と RPO を書き出す**(下の「何が見えたら成功か」の表の形で)。
 
@@ -122,7 +181,7 @@ DELETE 9
 tools/restore.sh  0.05s user 0.02s system 52% cpu 0.144 total
 ```
 
-最後の行は Mac の標準のシェル(zsh)の形で、最後の `0.144 total` が復元にかかった時間です。Windows(WSL2)や Linux の bash では、`real    0m0.144s` の行が同じ意味です。
+最後の行は Mac の標準のシェル(zsh)の形で、最後の `0.144 total` が復元にかかった時間です。Windows(WSL2)や Linux の bash では、`real    0m0.144s` の行が同じ意味です。PowerShell では `TotalSeconds` の数字(秒)が同じ意味です。
 
 **手順 6**: 注文は戻りましたが、**`00001009` は戻りません**。バックアップの後に入ったからです。
 
@@ -178,9 +237,18 @@ alice orders: ['00001003', '00001002', '00001001']
 
 DB は元の見本データに戻っています。バックアップのファイルは手元にだけ残ります(`.gitignore` に入っているのでリポジトリには入りません)。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 ls backups/                 # 取ったファイルが見える
 unset TOKEN A
 ```
 
-演習で取ったバックアップを消したいときは `rm backups/store-*.sql`、DB をまっさらにしたいときは `docker compose down -v` です。
+```powershell [PowerShell]
+Get-ChildItem backups/      # 取ったファイルが見える
+Remove-Variable TOKEN, A
+```
+
+:::
+
+演習で取ったバックアップを消したいときは `rm backups/store-*.sql`(PowerShell は `Remove-Item backups/store-*.sql`)、DB をまっさらにしたいときは `docker compose down -v` です。

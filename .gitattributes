@@ -9,6 +9,8 @@
 
 # 特に大事な物(CRLF になると動かない物)は、はっきり書いておく
 *.sh        text eol=lf
+# PowerShell のスクリプトも LF のまま(pwsh 7 は LF で動きます。文字コードは BOM 付き UTF-8 でファイルに入れています)
+*.ps1       text eol=lf
 *.conf      text eol=lf
 *.template  text eol=lf
 *.alloy     text eol=lf

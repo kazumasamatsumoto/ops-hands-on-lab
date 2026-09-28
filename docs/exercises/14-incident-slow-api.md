@@ -6,7 +6,7 @@ title: 障害-1 API が遅い → SSR が逃げる
 
 ::: info この演習について
 - 所要時間: 約 20 分
-- 使うもの: 軽量版(docker compose)。`curl`、ブラウザ、`tools/chaos.sh`、Prometheus(http://localhost:19090)、pager(http://localhost:19094)
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、ブラウザ、`tools/chaos.sh`(PowerShell は `tools/chaos.ps1`)、Prometheus(http://localhost:19090)、pager(http://localhost:19094)
 - 仕組みはこちら: [仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)・[仕組み-11 観測(指標・ログ・トレース)](/how-it-works/11-observability)
 - 関係する設計書: [障害対応方式](/design/architecture/08-incident-response)・[D-INC-03 API の応答遅延](/design/detail/D-INC-03-slow-api)・[FE 方式](/design/architecture/01-frontend)
 - 用語集: [フォールバック](/guide/glossary#fallback)・[タイムアウト](/guide/glossary#timeout)・[一次対応](/guide/glossary#first-response)・[ランブック](/guide/glossary#runbook)
@@ -44,23 +44,49 @@ JS Storefront も、api(OCC)が遅いときに SSR を諦めて CSR に切り替
 
 1. **api を遅くする**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set latencyMs=4000
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set latencyMs=4000
+   ```
+
+   :::
+
 2. **画面と api を 1 回ずつ取って、時間とヘッダを見る**(cdn-waf の作り置きに当たらないよう、`?t=` を付けて別 URL にします)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -D - -w 'status=%{http_code} total=%{time_total}s\n' http://www.lab.localhost:18080/p/100012 \
      | grep -iE 'x-render-mode|cache-control|x-cache|status='
    curl -s -o /dev/null -w 'api: status=%{http_code} total=%{time_total}s\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/100012?t=1"
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -D - -w 'status=%{http_code} total=%{time_total}s\n' http://www.lab.localhost:18080/p/100012 `
+     | Select-String -Pattern 'x-render-mode|cache-control|x-cache|status='
+   curl.exe -s -o NUL -w 'api: status=%{http_code} total=%{time_total}s\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/100012?t=1"
+   ```
+
+   :::
+
 3. **ログを見る**(気づく・切り分けるときの手がかり)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs storefront --no-log-prefix --since 1m | grep -E 'ssr_fallback|"url":"/p/100012"' | tail -2
    ```
+
+   ```powershell [PowerShell]
+   docker compose logs storefront --no-log-prefix --since 1m | Select-String -Pattern 'ssr_fallback|"url":"/p/100012"' | Select-Object -Last 2
+   ```
+
+   :::
 
    Grafana(http://localhost:13000)の「サンプルストア SLO」の一番下「ログ」のパネルでも同じ行が見られます。
 
@@ -68,9 +94,19 @@ JS Storefront も、api(OCC)が遅いときに SSR を諦めて CSR に切り替
 
 5. **アラートが鳴るまで、お客様のまねを続ける**(2 秒に 1 回、数分)。別のターミナルで Prometheus の http://localhost:19090/alerts を開いておきます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in $(seq 1 120); do curl -s -o /dev/null "http://www.lab.localhost:18080/p/$((100001 + i % 30))?t=$i" & sleep 2; done; wait
    ```
+
+   ```powershell [PowerShell]
+   foreach ($i in 1..120) { curl.exe -s -o NUL "http://www.lab.localhost:18080/p/$(100001 + $i % 30)?t=$i" }
+   ```
+
+   :::
+
+   PowerShell では 1 件ずつ順に送ります(1 件が 3 秒かかるので、待ち時間は入れていません。bash 版と同じく数分で 5% を超えます)。
 
    Prometheus の「Query」で次を見ます。
 
@@ -81,19 +117,39 @@ JS Storefront も、api(OCC)が遅いときに SSR を諦めて CSR に切り替
 
 6. **逃げ道が無かったら、をまねる**。SSR を 10 秒まで待つ設定にすると、お客様は api と同じだけ待たされます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    SSR_TIMEOUT_MS=10000 docker compose up -d storefront
    docker compose ps storefront        # (healthy) を待つ
    curl -s -o /dev/null -w 'status=%{http_code} mode=%header{x-render-mode} total=%{time_total}s\n' "http://www.lab.localhost:18080/p/100014?t=a"
    docker compose up -d storefront     # 既定の 3000 に戻す
    ```
 
+   ```powershell [PowerShell]
+   $env:SSR_TIMEOUT_MS = '10000'; docker compose up -d storefront
+   docker compose ps storefront        # (healthy) を待つ
+   curl.exe -s -o NUL -w 'status=%{http_code} mode=%header{x-render-mode} total=%{time_total}s\n' "http://www.lab.localhost:18080/p/100014?t=a"
+   Remove-Item Env:SSR_TIMEOUT_MS; docker compose up -d storefront     # 既定の 3000 に戻す
+   ```
+
+   :::
+
 7. **影響を止めて、戻ったことを確かめる**。本番なら「遅い部品を直す・切り離す」ですが、ここではスイッチを戻します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh reset
    curl -s -o /dev/null -w 'status=%{http_code} mode=%header{x-render-mode} total=%{time_total}s\n' "http://www.lab.localhost:18080/p/100016?t=c"
    ```
+
+   ```powershell [PowerShell]
+   tools/chaos.ps1 reset
+   curl.exe -s -o NUL -w 'status=%{http_code} mode=%header{x-render-mode} total=%{time_total}s\n' "http://www.lab.localhost:18080/p/100016?t=c"
+   ```
+
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -174,10 +230,21 @@ reset: status=200 mode=ssr total=0.053170s
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh reset
 docker compose up -d storefront                                                     # SSR_TIMEOUT_MS を既定の 3000 に
 curl -s -o /dev/null -w '%{http_code} %header{x-render-mode}\n' "http://www.lab.localhost:18080/p/100001?t=z"   # 200 ssr ならよい
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 reset
+Remove-Item Env:SSR_TIMEOUT_MS -ErrorAction SilentlyContinue
+docker compose up -d storefront                                                     # SSR_TIMEOUT_MS を既定の 3000 に
+curl.exe -s -o NUL -w '%{http_code} %header{x-render-mode}\n' "http://www.lab.localhost:18080/p/100001?t=z"   # 200 ssr ならよい
+```
+
+:::
 
 アラートは、遅延を止めてから数分で自然に `resolved` になります。

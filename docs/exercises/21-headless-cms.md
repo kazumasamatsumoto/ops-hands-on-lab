@@ -6,7 +6,7 @@ title: ヘッドレス-1 CMS の JSON が画面になるまで
 
 ::: info この演習について
 - 所要時間: 約 25 分
-- 使うもの: 軽量版(docker compose)。`curl`、ブラウザ、`psql`(未知の部品を試すとき)
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、ブラウザ、`psql`(未知の部品を試すとき)
 - 仕組みはこちら: [仕組み-5 ヘッドレスと CMS 駆動の描画](/how-it-works/05-headless-cms)・[仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)・[仕組み-6 api(OCC・fields・CORS)](/how-it-works/06-api-occ)
 - 関係する設計書: [FE 方式](/design/architecture/01-frontend)・[D-FE-05 CMS 駆動の描画(ヘッドレス)](/design/detail/D-FE-05-headless-cms)
 - 用語集: [ヘッドレス](/guide/glossary#headless)・[CMS 駆動の描画](/guide/glossary#cms-driven-rendering)・[スロット](/guide/glossary#slot)・[typeCode](/guide/glossary#typecode)・[JS Storefront](/guide/glossary#js-storefront)
@@ -46,43 +46,93 @@ CCv2 の `cmsComponents`(typeCode ごとに Angular 部品を登録する所)の
 
 1. **CMS の JSON を見る**。トップページの「枠(position)」と「部品(typeCode)」だけを抜き出します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080
    curl -s "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage" \
      | python3 -c 'import sys,json;p=json.load(sys.stdin);print("template:",p["template"]);[print(" ",s["position"],[c["typeCode"] for c in s["components"]["component"]]) for s in p["contentSlots"]["contentSlot"]]'
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080'
+   $p = curl.exe -s "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage" | ConvertFrom-Json
+   "template: $($p.template)"
+   foreach ($s in $p.contentSlots.contentSlot) { "  $($s.position) [$($s.components.component.typeCode -join ', ')]" }
+   ```
+
+   :::
+
+   PowerShell の `ConvertFrom-Json` は、JSON を「`.` でたどれる物」に変えます。`$p.contentSlots.contentSlot` が枠の一覧、`$p.contentSlots.contentSlot[2].components.component` が 3 番目の枠に置いてある部品(`typeCode` や `uid`)です。
+   加工せずに JSON をそのまま見たいときは `curl.exe -s "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage"` と打ちます(bash も同じで、`| python3 …` を外します)。
+
 2. **同じ並びが、画面(SSR の HTML)の印になっているのを見る**。JS を動かさなくても(= `curl`)、部品の種類が HTML に印として入っています。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s "http://www.lab.localhost:18080/?t=cms" | grep -oE 'data-slot="[^"]*"|data-cms-type="[^"]*"'
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s "http://www.lab.localhost:18080/?t=cms" | Select-String -Pattern 'data-slot="[^"]*"|data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value }
+   ```
+
+   :::
+
 3. **無いページは 404**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w '%{http_code}\n' "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=nothing"
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w '%{http_code}\n' "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=nothing"
+   ```
+
+   :::
 
 4. **対応表を読む**。`apps/web/src/app/cms/cms-mapping.ts` を開くと、typeCode → Angular 部品の対応が 1 か所にまとまっています(コメントに、知らない typeCode の扱いも書いてあります)。
 
 5. **backoffice で文言を変えて、画面が変わるのを見る**。反映をすぐ見るため、キャッシュを切っておきます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    EDGE_CACHE=off docker compose up -d cdn-waf; docker compose ps cdn-waf   # (healthy) を待つ
    ```
 
+   ```powershell [PowerShell]
+   $env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf; docker compose ps cdn-waf   # (healthy) を待つ
+   ```
+
+   :::
+
    ブラウザで http://backoffice.lab.localhost:18080/backoffice/ を開き、`admin` / `admin` でログインし、「トップページのバナー」の見出しを変えて保存します。次を打つと、JSON と画面の両方が変わっています。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage" \
      | python3 -c 'import sys,json;p=json.load(sys.stdin);[print("JSON の見出し:",c["headline"]) for s in p["contentSlots"]["contentSlot"] for c in s["components"]["component"] if c["typeCode"]=="SimpleBannerComponent"]'
    curl -s "http://www.lab.localhost:18080/?t=after" | grep -o '<h1[^>]*>[^<]*</h1>' | head -1
    ```
 
+   ```powershell [PowerShell]
+   $p = curl.exe -s "$A/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage" | ConvertFrom-Json
+   $p.contentSlots.contentSlot.components.component | Where-Object typeCode -eq 'SimpleBannerComponent' | ForEach-Object { "JSON の見出し: $($_.headline)" }
+   curl.exe -s "http://www.lab.localhost:18080/?t=after" | Select-String -Pattern '<h1[^>]*>[^<]*</h1>' -AllMatches | ForEach-Object { $_.Matches.Value } | Select-Object -First 1
+   ```
+
+   :::
+
 6. **storefront が知らない部品を足して、警告が出るのを見る**。CMS のデータに、対応表に無い typeCode(`MysteryWidgetComponent`)の部品を 1 つ足します(DB を直接いじる、演習用の操作)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T db psql -U store -d store <<'SQL'
    INSERT INTO cms_components (uid, type_code, name, attrs)
      VALUES ('LabMysteryWidget', 'MysteryWidgetComponent', '未知の部品(演習用)', '{"note":"storefront が知らない typeCode"}'::jsonb)
@@ -96,11 +146,32 @@ CCv2 の `cmsComponents`(typeCode ごとに Angular 部品を登録する所)の
    curl -s "http://www.lab.localhost:18080/?t=mystery2" | grep -oE 'data-cms-type="[^"]*"' | sort | uniq -c   # 知っている部品は描かれている
    ```
 
+   ```powershell [PowerShell]
+   docker compose exec -T db psql -U store -d store `
+     -c "INSERT INTO cms_components (uid, type_code, name, attrs) VALUES ('LabMysteryWidget', 'MysteryWidgetComponent', '未知の部品(演習用)', jsonb_build_object('note', 'storefront が知らない typeCode')) ON CONFLICT (uid) DO NOTHING;" `
+     -c "INSERT INTO cms_slot_components (page_uid, slot_id, sort, component_uid) VALUES ('homepage', 'Section2Slot-Homepage', 99, 'LabMysteryWidget') ON CONFLICT DO NOTHING;"
+   curl.exe -s -o NUL "http://www.lab.localhost:18080/?t=mystery"
+   docker compose logs storefront --no-log-prefix --since 20s | Select-String cms_unknown_component | Select-Object -Last 1
+   curl.exe -s "http://www.lab.localhost:18080/?t=mystery2" | Select-String -Pattern 'data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Group-Object | Select-Object Count, Name   # 知っている部品は描かれている
+   ```
+
+   :::
+
+   PowerShell では、SQL をファイルから流し込む(`<<'SQL'`)代わりに `-c` を 2 つ並べています(JSON の `{"note":…}` は、二重引用符を書かずに済む `jsonb_build_object` で作っています)。最後の行は `Count` と `Name` の 2 列の表で出ます。
+
    確かめたら、足した部品を消します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T db psql -U store -d store -c "DELETE FROM cms_slot_components WHERE component_uid='LabMysteryWidget'; DELETE FROM cms_components WHERE uid='LabMysteryWidget';"
    ```
+
+   ```powershell [PowerShell]
+   docker compose exec -T db psql -U store -d store -c "DELETE FROM cms_slot_components WHERE component_uid='LabMysteryWidget'; DELETE FROM cms_components WHERE uid='LabMysteryWidget';"
+   ```
+
+   :::
 
 7. **SSR とブラウザで、同じ JSON がどう使われるかを見る**(ブラウザ)。お店のトップ http://www.lab.localhost:18080/ を開き、開発者ツール(F12)の「コンソール」に次を貼ります。
    Chrome で初めてコンソールに貼ると、貼り付けについての警告が出て、貼れないことがあります。そのときは、コンソールに `allow pasting`(Chrome の表示が日本語なら `貼り付けを許可`)と手で打って Enter を押してから、もう一度貼ります。
@@ -202,10 +273,21 @@ JSON の見出し: 冬のノート祭り
 
 足した部品を消し、バナーの見出しを元に戻し、キャッシュを戻します。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose exec -T db psql -U store -d store -c "DELETE FROM cms_slot_components WHERE component_uid='LabMysteryWidget'; DELETE FROM cms_components WHERE uid='LabMysteryWidget';"
 docker compose up -d cdn-waf                          # EDGE_CACHE を付けずに起動 = on
 docker compose exec -T cdn-waf printenv EDGE_CACHE    # on ならよい
 ```
+
+```powershell [PowerShell]
+docker compose exec -T db psql -U store -d store -c "DELETE FROM cms_slot_components WHERE component_uid='LabMysteryWidget'; DELETE FROM cms_components WHERE uid='LabMysteryWidget';"
+Remove-Item Env:EDGE_CACHE -ErrorAction SilentlyContinue   # 手順 5 で入れた環境変数を消す
+docker compose up -d cdn-waf                          # EDGE_CACHE を付けずに起動 = on
+docker compose exec -T cdn-waf printenv EDGE_CACHE    # on ならよい
+```
+
+:::
 
 手順 5 で変えたバナーの見出しは、backoffice で元(「秋の文房具フェア」)に戻すか、まっさらにしたいときは `docker compose down -v` です。

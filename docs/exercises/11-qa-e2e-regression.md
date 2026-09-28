@@ -47,15 +47,25 @@ CCv2 の JS Storefront も、同じように Playwright などで E2E と画面�
 
 1. **ふつうに流す**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/e2e.sh
    ```
+
+   ```powershell [PowerShell]
+   tools/e2e.ps1
+   ```
+
+   :::
 
    詳しい報告は `tools/e2e/playwright-report/index.html` をブラウザで開くと見られます。
 
 2. **CSS を 1 行だけ変える**。商品詳細の価格の文字を大きくします(「見た目を少し整えるだけ」のつもりの修正のまね)。cdn-waf のキャッシュを避けるため、変更後に切ってから流します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp apps/web/src/styles.css /tmp/styles.css.bak
    sed -i.tmp 's/^\.price\.large { font-size: 1\.4rem;/.price.large { font-size: 2.4rem;/' apps/web/src/styles.css && rm apps/web/src/styles.css.tmp
    diff /tmp/styles.css.bak apps/web/src/styles.css
@@ -65,31 +75,77 @@ CCv2 の JS Storefront も、同じように Playwright などで E2E と画面�
    tools/e2e.sh
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item apps/web/src/styles.css "$env:TEMP/styles.css.bak"
+   $f = "$PWD/apps/web/src/styles.css"
+   [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace '(?m)^\.price\.large \{ font-size: 1\.4rem;', '.price.large { font-size: 2.4rem;'))
+   git diff --no-index "$env:TEMP/styles.css.bak" apps/web/src/styles.css
+   docker compose up -d --build storefront
+   docker compose ps storefront        # (healthy) を待つ
+   $env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf; docker compose ps cdn-waf   # 画面比較がキャッシュに当たらないように
+   tools/e2e.ps1
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   `$env:EDGE_CACHE = 'off'` は同じウィンドウで打つ以後のコマンド全部に効き続けます。手順 4 で `Remove-Item Env:EDGE_CACHE` を打ってから cdn-waf を作り直します。また、`diff` の代わりに `git diff --no-index` で違いを見ています。
+   :::
+
 3. **差分の画像を見る**。失敗の報告に出てくる `product-detail-diff.png`(`tools/e2e/test-results/` の下)を開くと、違う所が赤く塗られています。
    報告の HTML では、基準・今回・差分をスライダーで見比べられます。
 
 4. **CSS とキャッシュを元に戻す**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp /tmp/styles.css.bak apps/web/src/styles.css && rm /tmp/styles.css.bak
    docker compose up -d --build storefront
    docker compose up -d cdn-waf        # EDGE_CACHE を付けずに起動 = on
    docker compose ps storefront cdn-waf   # 両方 (healthy) を待つ
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item "$env:TEMP/styles.css.bak" apps/web/src/styles.css; Remove-Item "$env:TEMP/styles.css.bak"
+   docker compose up -d --build storefront
+   Remove-Item Env:EDGE_CACHE; docker compose up -d cdn-waf   # EDGE_CACHE を消してから起動 = on
+   docker compose ps storefront cdn-waf   # 両方 (healthy) を待つ
+   ```
+
+   :::
+
 5. **認可の穴を開けて、認可のテストだけ流す**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set idorBug=true
    tools/e2e.sh tests/authz.spec.ts
    tools/chaos.sh reset
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set idorBug=true
+   tools/e2e.ps1 tests/authz.spec.ts
+   tools/chaos.ps1 reset
+   ```
+
+   :::
+
 6. **全部が通ることを確かめる**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/e2e.sh
    ```
+
+   ```powershell [PowerShell]
+   tools/e2e.ps1
+   ```
+
+   :::
 
 7. **テストの書き方を読む**。`tools/e2e/tests/journey.spec.ts` を開き、画面の部品を「見出し」「リンク」「ボタン」といった **役割と文字** で探していること、固定の秒数では待たず「見えるまで待つ」書き方になっていることを確かめます。
 
@@ -179,10 +235,20 @@ CCv2 の JS Storefront も、同じように Playwright などで E2E と画面�
 
 CSS とキャッシュが元に戻っているか確かめます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 git status --short apps/web/src/styles.css 2>/dev/null   # 何も出なければ元通り(git で取ってきた場合)
 tools/chaos.sh status                                    # idorBug が false ならよい
 docker compose exec -T cdn-waf printenv EDGE_CACHE       # on ならよい
 ```
 
-画面比較の基準画像を撮り直したいときは `tools/e2e.sh --update-snapshots` です(意図した見た目の変更のときだけ)。
+```powershell [PowerShell]
+git status --short apps/web/src/styles.css 2>$null       # 何も出なければ元通り(git で取ってきた場合)
+tools/chaos.ps1 status                                   # idorBug が false ならよい
+docker compose exec -T cdn-waf printenv EDGE_CACHE       # on ならよい
+```
+
+:::
+
+画面比較の基準画像を撮り直したいときは `tools/e2e.sh --update-snapshots`(PowerShell では `tools/e2e.ps1 --update-snapshots`)です(意図した見た目の変更のときだけ)。

@@ -181,7 +181,9 @@ ingress-nginx 全体の設定は ConfigMap `ingress-nginx-controller`(Namespace 
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 今の IP フィルタの中身
 docker compose exec ingress cat /etc/nginx/ip-filters/backoffice.conf
 # → allow 127.0.0.1/32;
@@ -222,8 +224,59 @@ BACKOFFICE_IP_ALLOWLIST=172.30.89.0/24 docker compose up -d ingress
 docker compose up -d ingress
 ```
 
-::: details 本格版(Kubernetes)では
-```bash
+```powershell [PowerShell]
+# 今の IP フィルタの中身
+docker compose exec ingress cat /etc/nginx/ip-filters/backoffice.conf
+# → allow 127.0.0.1/32;
+#   allow 172.30.89.0/24;
+#   allow 172.30.91.0/24;
+#   deny all;
+
+# この PC(社内扱い)からは backoffice に届く
+curl.exe -s -o NUL -w '%{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login
+# → 200
+
+# 社外の代わりのネットワーク(lab_outside)からは 403(コンテナの中の curl なので -o /dev/null のまま)
+docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: backoffice.lab.localhost' http://cdn-waf:18080/backoffice/login
+# → 403
+
+# 社外からでも、お店(www)は誰でも
+docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: www.lab.localhost' http://cdn-waf:18080/
+# → 200
+
+# 中の人だけの口は外から 403
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/admin/chaos   # → 403
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/metrics       # → 403
+
+# ログインの回数制限: 10 回連打 → 最初の数回は 400(パスワード違い)、そのあと 429
+$codes = foreach ($i in 1..10) {
+  curl.exe -s -o NUL -w '%{http_code}' http://api.lab.localhost:18080/authorizationserver/oauth/token `
+    -d 'grant_type=password&client_id=storefront&username=alice&password=wrong'
+}
+$codes -join ' '
+
+# ingress のログ: remote_addr が利用者の IP、via が cdn-waf
+docker compose logs --tail=3 ingress
+
+# この PC も社外扱いにしてみる(許す範囲から 127.0.0.1 を外す)→ ブラウザでも 403
+$env:BACKOFFICE_IP_ALLOWLIST = '172.30.89.0/24'; docker compose up -d ingress
+# 元に戻す(環境変数を消してから作り直す)
+Remove-Item Env:BACKOFFICE_IP_ALLOWLIST; docker compose up -d ingress
+```
+
+:::
+
+::: tip PowerShell
+`$env:BACKOFFICE_IP_ALLOWLIST = …` は同じウィンドウで打つ以後のコマンド全部に効き続けます。元に戻すときは `Remove-Item Env:BACKOFFICE_IP_ALLOWLIST` を先に打ってから `docker compose up -d ingress` します。
+:::
+
+:::: details 本格版(Kubernetes)では
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab get ingress                     # エンドポイントの一覧(HOSTS 欄にホスト名)
 kubectl -n lab describe ingress backoffice      # 注釈(IP フィルタ)と行き先
 kubectl kustomize k8s/generated/envs/d1 | grep -A8 allowlist-source-range | grep '^  name:'   # IP フィルタの付いた Ingress の名前。d1 では api・api-ratelimit-1・backoffice・www(p1 は backoffice だけ)
@@ -238,7 +291,26 @@ docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/nul
 # ingress-nginx のログ: remote_addr が利用者の IP(172.30.92.x なら社外)、via が cdn-waf(172.30.91.10)、ingress が当たった Ingress の名前
 kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
 ```
+
+```powershell [PowerShell]
+kubectl -n lab get ingress                     # エンドポイントの一覧(HOSTS 欄にホスト名)
+kubectl -n lab describe ingress backoffice      # 注釈(IP フィルタ)と行き先
+kubectl kustomize k8s/generated/envs/d1 | Select-String 'allowlist-source-range' -Context 0,8 | ForEach-Object { $_.Context.PostContext } | Select-String '^  name:'   # IP フィルタの付いた Ingress の名前。d1 では api・api-ratelimit-1・backoffice・www(p1 は backoffice だけ)
+
+# 社外の代わりのネットワーク lab-kind-outside(172.30.92.0/24)から → 403
+docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: backoffice.lab.localhost' http://lab-cdn-waf:18080/backoffice/login
+# お店(www)は p1 なら社外からも 200(d1・s1 では 403)
+docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: www.lab.localhost' http://lab-cdn-waf:18080/
+
+# ingress-nginx のログ: remote_addr が利用者の IP(172.30.92.x なら社外)、via が cdn-waf(172.30.91.10)、ingress が当たった Ingress の名前
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
+```
+
 :::
+
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

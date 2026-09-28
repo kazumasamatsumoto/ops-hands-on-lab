@@ -47,11 +47,23 @@ storefront は、CCv2 の **JS Storefront**(Composable Storefront を SSR で動
 
 1. **いまの SSR の HTML を見る**。`curl` は「ブラウザの代わりに HTML を取ってきて、そのまま表示する道具」です。JavaScript は動かしません(検索サイトのロボットに近い見え方です)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -D - -o /tmp/ssr.html http://www.lab.localhost:18080/p/100001 | grep -iE 'x-render-mode|content-length|x-cache'
    grep -oE '<h1[^>]*>[^<]*' /tmp/ssr.html                     # 商品名の見出し
    grep -o 'data-cms-type="[^"]*"' /tmp/ssr.html | sort | uniq -c   # CMS の部品がいくつ入っているか
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -s -D - -o "$env:TEMP/ssr.html" http://www.lab.localhost:18080/p/100001 | Select-String -Pattern 'x-render-mode|content-length|x-cache'
+   Select-String -Path "$env:TEMP/ssr.html" -Pattern '<h1[^>]*>[^<]*' -AllMatches | ForEach-Object { $_.Matches.Value }                     # 商品名の見出し
+   Select-String -Path "$env:TEMP/ssr.html" -Pattern 'data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Group-Object | Sort-Object Name | Select-Object Count, Name   # CMS の部品がいくつ入っているか
+   ```
+
+   :::
+
+   PowerShell では、部品の数は `Count Name` の 2 列の表で出ます(`/tmp/…` の代わりに Windows の一時フォルダ `$env:TEMP` を使います)。
 
 2. **ブラウザで見る**。http://www.lab.localhost:18080/p/100001 を開き、画面のいちばん下の「描画モード」を確かめます。
    次に、右クリック →「ページのソースを表示」で、サーバーから届いた HTML そのものを見ます(商品名や説明が並んでいるはずです)。
@@ -59,19 +71,42 @@ storefront は、CCv2 の **JS Storefront**(Composable Storefront を SSR で動
 
 3. **CSR に切り替える**。コマンドの前に `RENDER_MODE=csr` と書くと、その 1 回だけ storefront の設定を変えて作り直せます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    RENDER_MODE=csr docker compose up -d storefront
    docker compose ps storefront        # STATUS が (healthy) になるまで待つ(10〜20 秒)
    ```
 
+   ```powershell [PowerShell]
+   $env:RENDER_MODE = 'csr'; docker compose up -d storefront
+   docker compose ps storefront        # STATUS が (healthy) になるまで待つ(10〜20 秒)
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   bash の `RENDER_MODE=csr docker compose …` は「その 1 回だけ」ですが、PowerShell の `$env:RENDER_MODE = 'csr'` は **同じウィンドウで打つ以後のコマンド全部** に効き続けます。戻すときは `Remove-Item Env:RENDER_MODE` を先に打ってから `docker compose up -d storefront` します(片付けの PowerShell タブに入れてあります)。
+   :::
+
 4. **CSR の HTML を見る**。ただし、入口の cdn-waf が商品詳細の HTML を **30 秒ためている(キャッシュ)** ので、切り替え直後は古い SSR の HTML が返ることがあります。
    ここでは URL の後ろに `?t=csr` を付けて「別の URL」にし、キャッシュを避けます(キャッシュは [ネットワーク-1](./07-nw-cache) で詳しく見ます)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -D - -o /tmp/csr.html "http://www.lab.localhost:18080/p/100001?t=csr" | grep -iE 'x-render-mode|content-length|cache-control'
    grep -c 'data-cms-type' /tmp/csr.html
    sed -n '/<body/,$p' /tmp/csr.html
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -s -D - -o "$env:TEMP/csr.html" 'http://www.lab.localhost:18080/p/100001?t=csr' | Select-String -Pattern 'x-render-mode|content-length|cache-control'
+   @(Select-String -Path "$env:TEMP/csr.html" -Pattern 'data-cms-type').Count
+   $html = Get-Content -Raw "$env:TEMP/csr.html"; $html.Substring($html.IndexOf('<body'))
+   ```
+
+   :::
 
    zsh(Mac の標準のシェル)では、`?` の入った URL は必ず `"..."` で囲んでください。囲まないと `no matches found` と言われます。
 
@@ -80,11 +115,21 @@ storefront は、CCv2 の **JS Storefront**(Composable Storefront を SSR で動
 
 6. **速さを比べる**。`time_starttransfer` は「最初の 1 バイトが届くまでの時間(TTFB)」です。`$RANDOM` で毎回違う URL にして、キャッシュを避けます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in 1 2 3; do
      curl -s -o /dev/null -w 'status=%{http_code} size=%{size_download}B ttfb=%{time_starttransfer}s\n' "http://www.lab.localhost:18080/p/100001?t=$i$RANDOM"
    done
    ```
+
+   ```powershell [PowerShell]
+   foreach ($i in 1..3) {
+     curl.exe -s -o NUL -w 'status=%{http_code} size=%{size_download}B ttfb=%{time_starttransfer}s\n' "http://www.lab.localhost:18080/p/100001?t=$i$(Get-Random)"
+   }
+   ```
+
+   :::
 
    SSR に戻してから(手順 8 の片付け)同じコマンドを打つと、SSR のときの数字も取れます。
 
@@ -170,9 +215,20 @@ SSR はサーバーで api を呼んで組み立てるぶん最初の 1 バイ�
 
 SSR に戻します(`RENDER_MODE` を付けずに打つと、既定の `ssr` になります)。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose up -d storefront
 docker compose ps storefront                                              # (healthy) を待つ
 curl -sI http://www.lab.localhost:18080/login | grep -i x-render-mode    # X-Render-Mode: ssr ならよい
 rm -f /tmp/ssr.html /tmp/csr.html
 ```
+
+```powershell [PowerShell]
+Remove-Item Env:RENDER_MODE -ErrorAction SilentlyContinue; docker compose up -d storefront   # 環境変数を消してから作り直す
+docker compose ps storefront                                              # (healthy) を待つ
+curl.exe -sI http://www.lab.localhost:18080/login | Select-String 'x-render-mode'    # X-Render-Mode: ssr ならよい
+Remove-Item "$env:TEMP/ssr.html", "$env:TEMP/csr.html"
+```
+
+:::

@@ -158,7 +158,9 @@ api は「何度失敗してもロックしない」作りなので、総当た�
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # トークンをもらう
 curl -s http://api.lab.localhost:18080/authorizationserver/oauth/token \
   -d 'grant_type=password&client_id=storefront&username=alice&password=password'
@@ -192,6 +194,42 @@ curl -s -o /dev/null -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" \
   http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
 # → 401
 ```
+
+```powershell [PowerShell]
+# トークンをもらう
+curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=password'
+# → {"access_token":"…","token_type":"bearer","expires_in":900,"scope":"basic"}
+
+# 変数に入れて、注文を見る(JSON は ConvertFrom-Json で読む)
+$TOKEN = (curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=password' | ConvertFrom-Json).access_token
+curl.exe -s -H "Authorization: Bearer $TOKEN" http://api.lab.localhost:18080/occ/v2/samplestore/users/current
+# → {"uid":"alice","name":"…"}
+
+# 失敗のいろいろ(状態コードと error を見る)
+curl.exe -s -w ' %{http_code}\n' http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=wrong'
+# → {"error":"invalid_grant",…} 400
+curl.exe -s -w ' %{http_code}\n' http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=other-app&username=alice&password=password'
+# → {"error":"invalid_client",…} 401
+curl.exe -s -w ' %{http_code}\n' -H 'Authorization: Bearer nonsense' `
+  http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
+# → {"errors":[{"type":"InvalidTokenError",…}]} 401
+
+# DB にはトークンそのものではなく SHA-256 が入っている
+docker compose exec db psql -U store -d store -c `
+  "SELECT left(token_hash, 16) AS hash, client_id, expires_at FROM oauth_access_tokens ORDER BY expires_at DESC LIMIT 3;"
+
+# ログアウト(トークンを無効にする)
+curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/revoke -d "token=$TOKEN"
+curl.exe -s -o NUL -w '%{http_code}\n' -H "Authorization: Bearer $TOKEN" `
+  http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
+# → 401
+```
+
+:::
 
 ブラウザでは、http://www.lab.localhost:18080/login で `alice` / `password` を入れたあと、開発者ツールの **Application → Session Storage → http://www.lab.localhost:18080** に `samplestore.token` が入っているのを確かめます。タブを閉じて開き直すと消えています。
 

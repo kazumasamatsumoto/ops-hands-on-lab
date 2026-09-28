@@ -6,7 +6,7 @@ title: セキュリティ-1 WAF が攻撃を止める
 
 ::: info この演習について
 - 所要時間: 約 25 分
-- 使うもの: 軽量版(docker compose)。`curl`、`tools/attack-samples.sh`、`tools/chaos.sh`
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、`tools/attack-samples.sh`・`tools/chaos.sh`(PowerShell は `tools/attack-samples.ps1`・`tools/chaos.ps1`)
 - 仕組みはこちら: [仕組み-1 cdn-waf(CDN と WAF)](/how-it-works/01-cdn-waf)・[仕組み-9 検索と Solr](/how-it-works/09-search-solr)
 - 関係する設計書: [セキュリティ方式](/design/architecture/10-security)・[D-SEC-01 WAF とレート制限](/design/detail/D-SEC-01-waf-and-rate-limit)
 - 用語集: [WAF](/guide/glossary#waf)・[ModSecurity](/guide/glossary#modsecurity)・[OWASP CRS](/guide/glossary#owasp-crs)・[異常スコア](/guide/glossary#anomaly-score)・[パラノイアレベル](/guide/glossary#paranoia-level)・[誤遮断](/guide/glossary#false-positive)・[SQL インジェクション](/guide/glossary#sql-injection)
@@ -42,25 +42,46 @@ WAF はアプリの穴を塞ぐものではありません。穴はアプリで�
 ## 3. まず触ってみる
 
 ::: warning 攻撃の見本は、このラボにだけ
-`tools/attack-samples.sh` と、この演習の攻撃の文字列は、**このラボ(www.lab.localhost・api.lab.localhost)にだけ** 送ってください。実在のサイトや他人のサーバーに送ってはいけません。許可なく送ると法律に触れるおそれがあります。
+`tools/attack-samples.sh`(`tools/attack-samples.ps1`)と、この演習の攻撃の文字列は、**このラボ(www.lab.localhost・api.lab.localhost)にだけ** 送ってください。実在のサイトや他人のサーバーに送ってはいけません。許可なく送ると法律に触れるおそれがあります。
 :::
 
 1. **攻撃の見本を送る**。普通の検索は通り、攻撃は止まります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/attack-samples.sh
    ```
 
+   ```powershell [PowerShell]
+   tools/attack-samples.ps1
+   ```
+
+   :::
+
 2. **なぜ止めたかを見る**(ルールの番号)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs cdn-waf --no-log-prefix --since 1m | grep -o '"ruleId":"[0-9]*"' | sort | uniq -c
    ```
+
+   ```powershell [PowerShell]
+   docker compose logs cdn-waf --no-log-prefix --since 1m | Select-String -Pattern '"ruleId":"[0-9]*"' -AllMatches `
+     | ForEach-Object { $_.Matches.Value } | Group-Object | Select-Object Count, Name
+   ```
+
+   :::
+
+   PowerShell では、ルール番号ごとの回数が `Count` と `Name` の 2 列の表で出ます。
 
 3. **アプリに SQL インジェクションの穴を開けて、WAF を通さずに試す**。`sqliBug=true` にすると、検索語がそのまま SQL に連結されます。
    ここでは「常に真になる条件(`' OR '1'='1`)」を、cdn-waf を通さずに api の中から直接送り、**検索の意味が書き換わって全商品が返る** ことだけを確かめます(会員の情報は引き出しません)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set sqliBug=true
    docker compose exec -T api curl -s "http://localhost:3001/occ/v2/samplestore/products/search?query=%27%20OR%20%271%27%3D%271" \
      | python3 -c 'import json,sys;print("返った件数:",json.load(sys.stdin)["pagination"]["totalResults"],"(= 全 30 件。検索語で件数が変わっていない = SQL の意味が書き換わった)")'
@@ -68,19 +89,42 @@ WAF はアプリの穴を塞ぐものではありません。穴はアプリで�
      | python3 -c 'import sys,json;s=json.loads(sys.stdin.read())["sql"];print("危ない SQL: …",s[s.find("WHERE"):][:70],"…")'
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set sqliBug=true
+   $r = docker compose exec -T api curl -s "http://localhost:3001/occ/v2/samplestore/products/search?query=%27%20OR%20%271%27%3D%271" | ConvertFrom-Json
+   "返った件数: $($r.pagination.totalResults) (= 全 30 件。検索語で件数が変わっていない = SQL の意味が書き換わった)"
+   $s = (docker compose logs api --no-log-prefix --since 30s | Select-String sqliBug | Select-Object -Last 1 | ForEach-Object { $_.Line } | ConvertFrom-Json).sql
+   "危ない SQL: … " + [regex]::Match($s, 'WHERE.{0,65}').Value + " …"
+   ```
+
+   :::
+
 4. **同じ攻撃を、cdn-waf(WAF)経由で送る**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%27%20OR%20%271%27%3D%271"
    docker compose logs cdn-waf --no-log-prefix --since 20s | grep '"transaction"' | tail -1 | grep -o '"ruleId":"[0-9]*"' | sort | uniq -c
    tools/chaos.sh reset
    ```
 
-   2 行目の `tail -1` は「cdn-waf が最後に止めた 1 件(今送った攻撃)」だけを見るためです。
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%27%20OR%20%271%27%3D%271"
+   docker compose logs cdn-waf --no-log-prefix --since 20s | Select-String '"transaction"' | Select-Object -Last 1 | ForEach-Object { $_.Line } `
+     | Select-String -Pattern '"ruleId":"[0-9]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Group-Object | Select-Object Count, Name
+   tools/chaos.ps1 reset
+   ```
+
+   :::
+
+   2 行目の `tail -1`(PowerShell は `Select-Object -Last 1`)は「cdn-waf が最後に止めた 1 件(今送った攻撃)」だけを見るためです。
 
 5. **疑い深さを上げて、普通の検索を試す**。1 → 3 → 4 と上げ、日本語や記号の入った普通の検索を送ります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=
    for pl in 1 3 4; do
      BLOCKING_PARANOIA=$pl docker compose up -d cdn-waf >/dev/null 2>&1
@@ -92,18 +136,44 @@ WAF はアプリの穴を塞ぐものではありません。穴はアプリで�
    done
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query='
+   foreach ($pl in 1, 3, 4) {
+     $env:BLOCKING_PARANOIA = "$pl"; docker compose up -d cdn-waf *> $null
+     if (-not (docker compose ps cdn-waf | Select-String healthy)) { Start-Sleep 3 }
+     $codes = foreach ($q in '%E3%83%8E%E3%83%BC%E3%83%88%20(A5)', '50%25%20off', 'O%27Reilly', 'select%20pen') { curl.exe -s -o NUL -w '%{http_code}' "${A}${q}" }
+     "PL=${pl}: $($codes -join ' ')  (ノート(A5) / 50% off / O'Reilly / select pen)"
+   }
+   ```
+
+   :::
+
 6. **止めた理由を見る**(疑い深さ 3 のとき)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    BLOCKING_PARANOIA=3 docker compose up -d cdn-waf >/dev/null 2>&1; sleep 3
    curl -s -o /dev/null "$A%E3%83%8E%E3%83%BC%E3%83%88%20(A5)"
    docker compose logs cdn-waf --no-log-prefix --since 15s | grep '"transaction"' | grep 'A5' | tail -1 \
      | python3 -c 'import sys,json;[print(m["details"]["ruleId"],"|",m["message"][:60]) for m in json.loads(sys.stdin.read())["transaction"]["messages"]]'
    ```
 
+   ```powershell [PowerShell]
+   $env:BLOCKING_PARANOIA = '3'; docker compose up -d cdn-waf *> $null; Start-Sleep 3
+   curl.exe -s -o NUL "${A}%E3%83%8E%E3%83%BC%E3%83%88%20(A5)"
+   $t = docker compose logs cdn-waf --no-log-prefix --since 15s | Select-String '"transaction"' | ForEach-Object { $_.Line } `
+     | Select-String 'A5' | Select-Object -Last 1 | ForEach-Object { $_.Line } | ConvertFrom-Json
+   $t.transaction.messages | ForEach-Object { "$($_.details.ruleId) | $($_.message.Substring(0, [Math]::Min(60, $_.message.Length)))" }
+   ```
+
+   :::
+
 7. **狭い例外で直す**。`cdn-waf/modsecurity/lab-exclusions-before.conf` の最後に、次を足します(「商品検索の query と URL だけ、日本語・記号で誤遮断したルールを外す」という意味です)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp cdn-waf/modsecurity/lab-exclusions-before.conf /tmp/excl.bak
    cat >> cdn-waf/modsecurity/lab-exclusions-before.conf <<'EOF'
 
@@ -123,6 +193,36 @@ WAF はアプリの穴を塞ぐものではありません。穴はアプリで�
    curl -s -o /dev/null -w '%{http_code} script タグの攻撃(止まったまま)\n' "$A%3Cscript%3Ealert(1)%3C%2Fscript%3E"
    curl -s -o /dev/null -w '%{http_code} ノート on /search 画面(例外を書いていない)\n' "http://www.lab.localhost:18080/search?q=%E3%83%8E%E3%83%BC%E3%83%88%20(A5)"
    ```
+
+   ```powershell [PowerShell]
+   $f = "$PWD/cdn-waf/modsecurity/lab-exclusions-before.conf"
+   Copy-Item $f "$env:TEMP/excl.bak"
+   $rule = @'
+
+   # 演習: 商品検索の query だけ、日本語・記号で誤遮断したルールを外す(狭い例外)
+   SecRule REQUEST_URI "@beginsWith /occ/v2/samplestore/products/search" \
+       "id:1002,phase:1,pass,nolog,\
+       ctl:ruleRemoveTargetById=920272;ARGS:query,\
+       ctl:ruleRemoveTargetById=920272;REQUEST_URI_RAW,\
+       ctl:ruleRemoveTargetById=920273;ARGS:query,\
+       ctl:ruleRemoveTargetById=920273;REQUEST_URI_RAW,\
+       ctl:ruleRemoveTargetById=942460;ARGS:query,\
+       ctl:ruleRemoveTargetById=942432;ARGS:query"
+   '@
+   [IO.File]::WriteAllText($f, [IO.File]::ReadAllText($f) + $rule.Replace("`r`n", "`n") + "`n")
+   $env:BLOCKING_PARANOIA = '3'; docker compose up -d --force-recreate cdn-waf *> $null; Start-Sleep 3
+   "$(curl.exe -s -o NUL -w '%{http_code}' "${A}%E3%83%8E%E3%83%BC%E3%83%88%20(A5)") ノート (A5) 検索 API"
+   "$(curl.exe -s -o NUL -w '%{http_code}' "${A}%27%20OR%20%271%27%3D%271") 常に真の攻撃(止まったまま)"
+   "$(curl.exe -s -o NUL -w '%{http_code}' "${A}%3Cscript%3Ealert(1)%3C%2Fscript%3E") script タグの攻撃(止まったまま)"
+   "$(curl.exe -s -o NUL -w '%{http_code}' "http://www.lab.localhost:18080/search?q=%E3%83%8E%E3%83%BC%E3%83%88%20(A5)") ノート on /search 画面(例外を書いていない)"
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   - ファイルへの追記に `>>` や `Set-Content` を使うと、改行が CRLF に変わったり文字コードが変わったりして、cdn-waf が例外ファイルを読めなくなることがあります。そのため `[IO.File]::WriteAllText`(UTF-8・LF のまま)で書いています。
+   - 日本語の文字は、`curl.exe -w` の中ではなく PowerShell の文字列の側に置いています(Windows の curl.exe に日本語の引数を渡すと、文字コードの都合で化けることがあるためです)。
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -223,10 +323,23 @@ WAF は穴を「ふさいで」はいません。**穴はアプリにあり、�
 
 例外ファイルと疑い深さを元に戻します。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 cp /tmp/excl.bak cdn-waf/modsecurity/lab-exclusions-before.conf && rm /tmp/excl.bak
 docker compose up -d --force-recreate cdn-waf        # BLOCKING_PARANOIA を付けずに起動 = 既定の 1
 docker compose ps cdn-waf                            # (healthy) を待つ
 docker compose exec -T cdn-waf printenv BLOCKING_PARANOIA   # 1 ならよい
 tools/chaos.sh status                                # sqliBug が false ならよい
 ```
+
+```powershell [PowerShell]
+Copy-Item "$env:TEMP/excl.bak" cdn-waf/modsecurity/lab-exclusions-before.conf; Remove-Item "$env:TEMP/excl.bak"
+Remove-Item Env:BLOCKING_PARANOIA -ErrorAction SilentlyContinue   # 手順 5〜7 で入れた環境変数を消す
+docker compose up -d --force-recreate cdn-waf        # BLOCKING_PARANOIA を付けずに起動 = 既定の 1
+docker compose ps cdn-waf                            # (healthy) を待つ
+docker compose exec -T cdn-waf printenv BLOCKING_PARANOIA   # 1 ならよい
+tools/chaos.ps1 status                               # sqliBug が false ならよい
+```
+
+:::

@@ -18,15 +18,17 @@ Kubernetes は kind(Kubernetes IN Docker = Docker のコンテナの中で動く
 
 | もの | 目安・入れ方 |
 | --- | --- |
-| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3〜3.5GB ほど使います。下の「使うメモリ」)。Windows(WSL2)では `.wslconfig` で決めます |
-| kind | Mac は `brew install kind`。v0.30 以上。Windows(WSL2 の Ubuntu)・Linux は下の「Windows(WSL2)・Linux で kind と kubectl を入れる」 |
-| kubectl | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows(WSL2)・Linux は同上 |
+| Docker Desktop | メモリの割り当て **8GB**(本格版だけで 3〜3.5GB ほど使います。下の「使うメモリ」)。Windows では `.wslconfig` で決めます |
+| kind | Mac は `brew install kind`。v0.30 以上。Windows(WSL2 の Ubuntu)・Linux は下の「kind と kubectl を入れる」。Windows の PowerShell 7 は `winget install Kubernetes.kind` |
+| kubectl | Mac は `brew install kubectl`(Docker Desktop に付いてくる物でも可)。Windows(WSL2)・Linux は同上。Windows の PowerShell 7 は `winget install Kubernetes.kubectl` |
 | Node.js | 24 以上(`tools/manifest/render.mjs` を動かすため) |
 | 空いているポート | 18080・13000・19090・19093・19094(軽量版と同じ番号) |
 
-### Windows(WSL2)・Linux で kind と kubectl を入れる
+### Windows(WSL2)・Linux・Windows(PowerShell 7)で kind と kubectl を入れる
 
-Windows では WSL2 の Ubuntu の中で打ちます(準備全体は [docs/guide/windows.md](../docs/guide/windows.md))。版はラボで確かめた物に固定しています(kind v0.30.0 = ノードの Kubernetes v1.34.0、kubectl v1.34.1)。
+Windows では WSL2 の Ubuntu の中で打つか(おすすめ)、PowerShell 7 で打ちます(準備全体は [docs/guide/windows.md](../docs/guide/windows.md))。版はラボで確かめた物に固定しています(kind v0.30.0 = ノードの Kubernetes v1.34.0、kubectl v1.34.1)。
+
+**Mac / Linux / WSL**
 
 ```bash
 ARCH=$(dpkg --print-architecture)   # ふつうの PC は amd64(ARM の PC なら arm64)
@@ -36,9 +38,20 @@ sudo install -m 0755 kind kubectl /usr/local/bin/ && rm kind kubectl
 kind version && kubectl version --client
 ```
 
+**PowerShell**(winget は最新の版を入れます。ラボで確かめた版より新しくなることがあります)
+
+```powershell
+winget install --id Kubernetes.kind -e
+winget install --id Kubernetes.kubectl -e
+# 新しい PowerShell 7 を開き直してから
+kind version; kubectl version --client
+```
+
 > **軽量版と本格版は同時に動かせません**(同じポート番号を使うため)。本格版を始める前に、リポジトリの一番上で `docker compose down` してください。
 
 ## 起動・停止・環境の切り替え
+
+**Mac / Linux / WSL**
 
 ```bash
 # 起動(ネットワーク作成 → クラスタ作成 → イメージのビルドと読み込み → 反映 → 全部 Ready まで待つ → cdn-waf 起動)
@@ -53,7 +66,21 @@ LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh
 k8s/down.sh
 ```
 
-`k8s/up.sh` は何度実行しても大丈夫です。manifest.json や設定ファイルを直したときも、もう一度実行すれば反映されます
+**PowerShell**(`k8s/up.ps1` は環境変数の代わりに引数で指定します)
+
+```powershell
+# 起動(やることは k8s/up.sh と同じ。初回 10〜15 分)
+k8s/up.ps1
+
+# 環境を切り替える(-Env d1|s1|p1。既定は p1)。-SkipBuild でビルドを飛ばせます
+k8s/up.ps1 -Env d1 -SkipBuild
+k8s/up.ps1 -Env p1 -SkipBuild
+
+# 停止(クラスタと cdn-waf のコンテナを消します。DB・指標・ログ・トレースのデータも消えます)
+k8s/down.ps1
+```
+
+`k8s/up.sh`(`k8s/up.ps1`)は何度実行しても大丈夫です。manifest.json や設定ファイルを直したときも、もう一度実行すれば反映されます
 (ConfigMap を変えただけでは動いている Pod は変わらないので、そのあと `kubectl -n lab rollout restart deploy/prometheus` のように作り直します)。
 
 開く場所は軽量版と同じです。
@@ -73,6 +100,7 @@ kind はクラスタを作ると kubectl の接続先(コンテキスト)を `ki
 > 変えられる値(ふだんは不要): `LAB_CLUSTER`(クラスタの名前。既定 `lab`)、`LAB_KIND_CONFIG`(クラスタ定義。既定 `k8s/kind-config.yaml`。
 > Grafana などのホスト側のポートはここで決まる)、`LAB_HTTP_PORT`(お店の入口のホスト側のポート。既定 18080)、`LAB_CDN_WAF_IP`(既定 172.30.91.10)。
 > 名前を変えたら `k8s/chaos.sh`・`k8s/down.sh` にも同じ `LAB_CLUSTER=...` を付けます。
+> PowerShell の `k8s/up.ps1` では引数で指定します: `-Env`、`-SkipBuild`、`-Cluster lab`、`-KindConfig k8s/kind-config.yaml`、`-HttpPort 18080`、`-EdgeCache on|off`(同じ名前の環境変数 `$env:LAB_ENV` などが入っていればそれも読みます)。
 > なお 18080 以外の番号にすると、ブラウザでは CORS と CSP の許可(`http://www.lab.localhost:18080` と書いてある所)に合わず、画面の一部が動きません。curl での確認用です。
 
 ## 全体の地図
@@ -147,10 +175,21 @@ k8s/
 
 どれがどの順で反映されるかは `k8s/up.sh` のコメントにあります。どの YAML ができるかは、クラスタが無くても次で見られます。
 
+**Mac / Linux / WSL**
+
 ```bash
 node tools/manifest/render.mjs              # manifest.json → k8s/generated/
 kubectl kustomize k8s/generated/envs/p1     # 環境 p1 の最終的な YAML
 diff <(kubectl kustomize k8s/generated/envs/d1) <(kubectl kustomize k8s/generated/envs/p1)   # d1 と p1 の違いだけ
+```
+
+**PowerShell**
+
+```powershell
+node tools/manifest/render.mjs              # manifest.json → k8s/generated/
+kubectl kustomize k8s/generated/envs/p1     # 環境 p1 の最終的な YAML
+kubectl kustomize k8s/generated/envs/d1 > "$env:TEMP/d1.yaml"; kubectl kustomize k8s/generated/envs/p1 > "$env:TEMP/p1.yaml"
+git diff --no-index "$env:TEMP/d1.yaml" "$env:TEMP/p1.yaml"   # d1 と p1 の違いだけ
 ```
 
 ## Kubernetes の言葉と、画面で見えるもの
@@ -171,6 +210,8 @@ diff <(kubectl kustomize k8s/generated/envs/d1) <(kubectl kustomize k8s/generate
 
 ## 確かめるコマンド
 
+**Mac / Linux / WSL**
+
 ```bash
 # SSR の HTML に CMS の部品が入っているか(cdn-waf → ingress-nginx → storefront → api)
 curl -s http://www.lab.localhost:18080/ | grep -o 'data-cms-type="[^"]*"' | sort | uniq -c
@@ -186,10 +227,29 @@ for i in $(seq 10); do curl -s -o /dev/null -w '%{http_code} ' http://api.lab.lo
   -d 'grant_type=password&client_id=storefront&username=alice&password=password'; done; echo
 ```
 
+**PowerShell**
+
+```powershell
+# SSR の HTML に CMS の部品が入っているか(cdn-waf → ingress-nginx → storefront → api)
+curl.exe -s http://www.lab.localhost:18080/ | Select-String -Pattern 'data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Group-Object | Select-Object Count, Name | Format-Table   # (Format-Table: 続けて貼り付けたとき、次の行の結果が表に巻き込まれないように)
+# 検索の実体が Solr か(X-Search-Provider: solr)
+curl.exe -s -D - -o NUL 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%E3%83%8E%E3%83%BC%E3%83%88' | Select-String x-search-provider
+# Ingress の一覧(ホスト名 → どこへ)と、付いている注釈(IP フィルタ・回数制限・閉じる口)
+kubectl -n lab get ingress
+kubectl -n lab get ingress -o custom-columns='NAME:.metadata.name,HOST:.spec.rules[0].host,PATH:.spec.rules[0].http.paths[*].path,ALLOW:.metadata.annotations.nginx\.ingress\.kubernetes\.io/allowlist-source-range,DENY:.metadata.annotations.nginx\.ingress\.kubernetes\.io/denylist-source-range,RPS:.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps'
+# 中の人だけの口は外から 403
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/admin/chaos
+# ログインの回数制限(1 秒 1 回 + 余裕 5 回)。続けて 10 回送ると 7 回目から 429
+foreach ($i in 1..10) { curl.exe -s -o NUL -w '%{http_code} ' http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=password' }; ''
+```
+
 ### IP フィルタを確かめる(backoffice は社内だけ)
 
 この PC から来た通信は、cdn-waf が「127.0.0.1 から来た」として伝えるので社内扱いです。
 「社外」から来た様子は、社外の代わりのネットワーク `lab-kind-outside`(172.30.92.0/24)に置いたコンテナから見られます。
+
+**Mac / Linux / WSL**
 
 ```bash
 # 社外から → 403(ingress-nginx の allowlist-source-range で断られる)
@@ -197,6 +257,19 @@ docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/nul
   -H 'Host: backoffice.lab.localhost' http://lab-cdn-waf:18080/backoffice/login
 # 社外からでも、お店(www)は p1 なら誰でも → 200(d1・s1 では 403)
 docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' \
+  -H 'Host: www.lab.localhost' http://lab-cdn-waf:18080/
+# ingress-nginx のログで、誰(remote_addr)がどこ(ingress)に来て何番(status)だったか
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
+```
+
+**PowerShell**(`docker run … curlimages/curl` はコンテナの中の Linux の curl なので、そのまま)
+
+```powershell
+# 社外から → 403(ingress-nginx の allowlist-source-range で断られる)
+docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
+  -H 'Host: backoffice.lab.localhost' http://lab-cdn-waf:18080/backoffice/login
+# 社外からでも、お店(www)は p1 なら誰でも → 200(d1・s1 では 403)
+docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' `
   -H 'Host: www.lab.localhost' http://lab-cdn-waf:18080/
 # ingress-nginx のログで、誰(remote_addr)がどこ(ingress)に来て何番(status)だったか
 kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=5
@@ -217,8 +290,16 @@ kubectl -n lab get deploy,rs,svc,ingress
 
 お客さんのまね(200 以外が出たら「止まった」ということです。`?t=` はキャッシュを避けて毎回 storefront まで届かせるため):
 
+**Mac / Linux / WSL**
+
 ```bash
 while true; do curl -s -o /dev/null -w '%{http_code}\n' "http://www.lab.localhost:18080/p/100001?t=$RANDOM"; sleep 0.2; done
+```
+
+**PowerShell**
+
+```powershell
+while ($true) { curl.exe -s -o NUL -w '%{http_code}\n' "http://www.lab.localhost:18080/p/100001?t=$(Get-Random)"; Start-Sleep -Milliseconds 200 }
 ```
 
 別のターミナルで入れ替えます。
@@ -235,6 +316,8 @@ curl はずっと `200` のままです。止める前の 5 秒待ち(`preStop`)
 
 ### 2. readiness で Not Ready になる(DB を止める)
 
+**Mac / Linux / WSL**
+
 ```bash
 kubectl -n lab scale statefulset/db --replicas=0    # DB を止める
 kubectl -n lab get pods -w                          # api・backoffice・worker が READY 0/1 になる(RESTARTS は増えない)
@@ -245,10 +328,23 @@ curl -s -o /dev/null -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/
 kubectl -n lab scale statefulset/db --replicas=1    # 戻す → しばらくで 1/1 に戻る
 ```
 
+**PowerShell**
+
+```powershell
+kubectl -n lab scale statefulset/db --replicas=0    # DB を止める
+kubectl -n lab get pods -w                          # api・backoffice・worker が READY 0/1 になる(RESTARTS は増えない)
+# 振り分け先の一覧。Pod の IP は残りますが ready=false になり、振り分けられなくなる
+kubectl -n lab get endpointslices -l kubernetes.io/service-name=api -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}  ready={.conditions.ready}{"\n"}{end}'
+curl.exe -s -o NUL -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/100001?t=$(Get-Random)"   # 503(つなぐ先が無い)
+kubectl -n lab scale statefulset/db --replicas=1    # 戻す → しばらくで 1/1 に戻る
+```
+
 見どころ: `/readyz`(DB に届くか)で Not Ready になり振り分けから外れますが、`/healthz`(生きているか)は元気なので**再起動はされません**。
 「DB が落ちただけで api を再起動しても直らない」ので、2 つの probe を分けています。
 
 ### 3. OOMKilled → CrashLoopBackOff(メモリ不足で再起動を繰り返す)
+
+**Mac / Linux / WSL**
 
 ```bash
 k8s/chaos.sh boot leakMb=20   # 起動時の値を「リクエストのたびに 20MB ためる」にする(Pod が作り直されても残る)
@@ -257,14 +353,35 @@ while true; do curl -s -o /dev/null -w '%{http_code}\n' "http://api.lab.localhos
 kubectl -n lab get pods -l app.kubernetes.io/name=api -w
 ```
 
+**PowerShell**
+
+```powershell
+k8s/chaos.ps1 boot leakMb=20  # 起動時の値を「リクエストのたびに 20MB ためる」にする(Pod が作り直されても残る)
+# お客さんのまね(?query= を変えてキャッシュを避け、api に届かせる)
+while ($true) { curl.exe -s -o NUL -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$(Get-Random)"; Start-Sleep -Milliseconds 300 }
+kubectl -n lab get pods -l app.kubernetes.io/name=api -w
+```
+
 見えること: api の Pod が `Running` → `OOMKilled` → `Running` → … → `CrashLoopBackOff` になり、`RESTARTS` が増えます(上限は `limits.memory: 256Mi`)。
 curl には 502・503 が混ざります。理由を確かめて、片付けます。
+
+**Mac / Linux / WSL**
 
 ```bash
 kubectl -n lab describe pod -l app.kubernetes.io/name=api | grep -A5 'Last State'   # Reason: OOMKilled / Exit Code: 137
 kubectl -n lab logs deploy/api --previous --tail=20                                # 落ちる直前のログ
 kubectl -n lab get events --sort-by=.lastTimestamp | tail -20                      # BackOff などの出来事
 k8s/chaos.sh boot-reset                                                            # 起動時の値を戻す(新しい Pod に入れ替わって直る)
+kubectl -n lab rollout status deploy/api
+```
+
+**PowerShell**
+
+```powershell
+kubectl -n lab describe pod -l app.kubernetes.io/name=api | Select-String -Context 0,5 'Last State'   # Reason: OOMKilled / Exit Code: 137
+kubectl -n lab logs deploy/api --previous --tail=20                                # 落ちる直前のログ
+kubectl -n lab get events --sort-by=.lastTimestamp | Select-Object -Last 20        # BackOff などの出来事
+k8s/chaos.ps1 boot-reset                                                           # 起動時の値を戻す(新しい Pod に入れ替わって直る)
 kubectl -n lab rollout status deploy/api
 ```
 
@@ -283,6 +400,8 @@ HPA(負荷に合わせて自動で台数を変える仕組み)は入れていま
 
 ### 5. 環境を切り替える(d1 と p1 の違い)
 
+**Mac / Linux / WSL**
+
 ```bash
 LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh
 kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
@@ -291,6 +410,18 @@ curl -sI "http://www.lab.localhost:18080/p/100001" | grep -i x-cache   # BYPASS(
 # 社外から www → 403(d1 はお店も社内だけ)
 docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.lab.localhost' http://lab-cdn-waf:18080/
 LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh                      # 戻す(2 台ずつ、キャッシュあり、www は誰でも)
+```
+
+**PowerShell**
+
+```powershell
+k8s/up.ps1 -Env d1 -SkipBuild
+kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
+kubectl -n lab get configmap lab-environment -o yaml       # LAB_ENV=d1・EDGE_CACHE=off
+curl.exe -sI "http://www.lab.localhost:18080/p/100001" | Select-String x-cache   # BYPASS(キャッシュなし。cdn-waf は EDGE_CACHE=off で起動し直される)
+# 社外から www → 403(d1 はお店も社内だけ)
+docker run --rm --network lab-kind-outside curlimages/curl:8.16.0 -s -o /dev/null -w '%{http_code}\n' -H 'Host: www.lab.localhost' http://lab-cdn-waf:18080/
+k8s/up.ps1 -Env p1 -SkipBuild                              # 戻す(2 台ずつ、キャッシュあり、www は誰でも)
 ```
 
 | | d1(開発) | s1(ステージング) | p1(本番) |
@@ -302,8 +433,16 @@ LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh                      # 戻す(2 台ずつ�
 
 ### 6. 1 つのリクエストの道筋(トレース)を見る
 
+**Mac / Linux / WSL**
+
 ```bash
 curl -s -o /dev/null "http://www.lab.localhost:18080/p/100001?t=$RANDOM"   # 1 回開く
+```
+
+**PowerShell**
+
+```powershell
+curl.exe -s -o NUL "http://www.lab.localhost:18080/p/100001?t=$(Get-Random)"   # 1 回開く
 ```
 
 Grafana(http://localhost:13000)のダッシュボード **「サンプルストア 1 リクエストの道筋」** を開き、「最近の道筋」の **Trace ID** を押します。
@@ -317,25 +456,51 @@ Explore から見る方法(右上の「サインイン」から `admin` / `admin
 
 コマンドで Tempo に直接聞くこともできます(Tempo は外に出していないので、Pod の中から聞きます)。
 
+**Mac / Linux / WSL**
+
 ```bash
 kubectl -n lab exec deploy/grafana -- wget -qO- 'http://tempo:3200/api/search?tags=service.name%3Dsamplestore-storefront&limit=5'
 kubectl -n lab exec deploy/grafana -- wget -qO- "http://tempo:3200/api/traces/<trace_id>" | head -c 600
 ```
 
+**PowerShell**(`<trace_id>` の書き方は PowerShell では使えないので、変数に入れます)
+
+```powershell
+kubectl -n lab exec deploy/grafana -- wget -qO- 'http://tempo:3200/api/search?tags=service.name%3Dsamplestore-storefront&limit=5'
+$traceId = '（上の一覧に出た traceID を貼る）'
+(kubectl -n lab exec deploy/grafana -- wget -qO- "http://tempo:3200/api/traces/$traceId" | Out-String).Substring(0, 600)
+```
+
 ### 7. 定期ジョブの止まりのアラート(worker)
+
+**Mac / Linux / WSL**
 
 ```bash
 k8s/chaos.sh worker boot cronFail=true cronIntervalSeconds=10   # ジョブを全部失敗させ、間隔を 10 秒に
 ```
 
-約 1〜2 分で `CronJobStaleDemo`、5〜6 分で `CronJobStale` が pager(http://localhost:19094)に届きます。片付けは `k8s/chaos.sh worker boot-reset`。
+**PowerShell**
+
+```powershell
+k8s/chaos.ps1 worker boot cronFail=true cronIntervalSeconds=10  # ジョブを全部失敗させ、間隔を 10 秒に
+```
+
+約 1〜2 分で `CronJobStaleDemo`、5〜6 分で `CronJobStale` が pager(http://localhost:19094)に届きます。片付けは `k8s/chaos.sh worker boot-reset`(`k8s/chaos.ps1 worker boot-reset`)。
 
 ### 8. 検索の索引が作り直される様子(backoffice → worker → Solr)
 
 管理画面で商品の価格を変えると、DB はすぐ変わりますが、Solr の索引(検索結果の価格)は worker の `searchIndexJob` が次に動くまで(最大 60 秒)古いままです。
 
+**Mac / Linux / WSL**
+
 ```bash
 kubectl -n lab logs deploy/worker -f | grep --line-buffered searchIndexJob   # 60 秒ごとに "result":"success","indexed":30(30 件を入れ直した)のログ
+```
+
+**PowerShell**
+
+```powershell
+kubectl -n lab logs deploy/worker -f | Select-String searchIndexJob   # 60 秒ごとに "result":"success","indexed":30(30 件を入れ直した)のログ
 ```
 
 ### 調べるときの基本の 3 つ
@@ -348,6 +513,8 @@ kubectl -n lab logs -l app.kubernetes.io/name=api --tail=20 # api の全 Pod の
 
 ## わざと壊すスイッチ(本格版)
 
+**Mac / Linux / WSL**
+
 ```bash
 k8s/chaos.sh status                  # 全部の api Pod の今の状態
 k8s/chaos.sh set latencyMs=1500      # 全部の api Pod に遅延
@@ -357,6 +524,19 @@ k8s/chaos.sh worker set cronFail=true
 k8s/chaos.sh worker reset
 k8s/chaos.sh boot leakMb=20          # 起動時の値を変える(Pod が作り直される)
 k8s/chaos.sh boot-reset              # 起動時の値を戻す
+```
+
+**PowerShell**(引数は `.sh` と同じ)
+
+```powershell
+k8s/chaos.ps1 status                 # 全部の api Pod の今の状態
+k8s/chaos.ps1 set latencyMs=1500     # 全部の api Pod に遅延
+k8s/chaos.ps1 set errorRate=0.5
+k8s/chaos.ps1 reset                  # 全部元に戻す
+k8s/chaos.ps1 worker set cronFail=true
+k8s/chaos.ps1 worker reset
+k8s/chaos.ps1 boot leakMb=20         # 起動時の値を変える(Pod が作り直される)
+k8s/chaos.ps1 boot-reset             # 起動時の値を戻す
 ```
 
 スイッチは Pod ごとに持っています。`kubectl -n lab exec deploy/api -- curl ...` と手で打つと、2 つある api Pod の**どちらか 1 つ**にしか届きません
@@ -384,13 +564,13 @@ Pod ごとの予約(requests)と上限(limits)は `kubectl -n lab describe node 
 - クラスタを作るとき kind が `WARNING: Here be dragons! This is not supported currently.` と出します。ノードをつなぐネットワークを
   `lab-kind`(番号を固定したもの)に指定する設定 `KIND_EXPERIMENTAL_DOCKER_NETWORK` が「試験中の機能」だという注意で、動きには問題ありません。
   番号を固定しているのは、manifest.json の社内の範囲(`ipFilters.office`)と ingress-nginx の `proxy-real-ip-cidr` に同じ番号を書くためです。
-- `tools/k6.sh` を本格版に向けるときは `LAB_DOCKER_NETWORK=lab-kind CDN_WAF_IP=172.30.91.10 tools/k6.sh browse.js` とします。
+- `tools/k6.sh` を本格版に向けるときは `LAB_DOCKER_NETWORK=lab-kind CDN_WAF_IP=172.30.91.10 tools/k6.sh browse.js` とします(PowerShell は `$env:LAB_DOCKER_NETWORK = 'lab-kind'; $env:CDN_WAF_IP = '172.30.91.10'; tools/k6.ps1 browse.js`。軽量版に戻すときは `Remove-Item Env:LAB_DOCKER_NETWORK, Env:CDN_WAF_IP`)。
 
 ## うまく動かないとき
 
 | 症状 | 見るところ・直し方 |
 | --- | --- |
-| `up.sh` が `address already in use` で止まる | 軽量版が動いていませんか。`docker compose down` してから `k8s/down.sh` → `k8s/up.sh` |
+| `up.sh`(`up.ps1`)が `address already in use` で止まる | 軽量版が動いていませんか。`docker compose down` してから `k8s/down.sh` → `k8s/up.sh`(PowerShell は `.ps1`)。Windows は [docs/guide/windows.md](../docs/guide/windows.md) の「ポートが使えない」も見てください |
 | `ネットワーク lab-kind の番号が…` で止まる | 同じ名前で別の番号のネットワークがあります。`docker network rm lab-kind` してからやり直す |
 | Pod が `Pending` のまま | メモリが足りません。`kubectl -n lab describe pod <名前>` の Events に `Insufficient memory`。Docker Desktop のメモリを増やす |
 | Pod が `ImagePullBackOff` | ネット接続を確認。`lab/api:local` なら `kind load docker-image lab/api:local --name lab` をやり直す |

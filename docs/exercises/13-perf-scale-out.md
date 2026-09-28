@@ -6,7 +6,7 @@ title: 性能-2 台数を増やして耐える
 
 ::: info この演習について
 - 所要時間: 約 20 分(本格版もやるなら +15 分)
-- 使うもの: 軽量版(docker compose)。`tools/k6.sh`、`docker stats`。本格版(kind)があれば比べられます
+- 使うもの: 軽量版(docker compose)。`tools/k6.sh`(PowerShell は `tools/k6.ps1`)、`docker stats`。本格版(kind)があれば比べられます
 - 仕組みはこちら: [仕組み-3 Kubernetes の基本](/how-it-works/03-kubernetes-basics)・[仕組み-4 storefront の SSR](/how-it-works/04-storefront-ssr)
 - 関係する設計書: [性能方式](/design/architecture/07-performance)・[インフラ方式](/design/architecture/03-infrastructure)
 - 用語集: [スケールアウト](/guide/glossary#scale-out)・[容量計画](/guide/glossary#capacity-planning)・[レプリカ](/guide/glossary#replica)・[HPA](/guide/glossary#hpa)
@@ -39,49 +39,103 @@ CCv2 では、aspect の台数は manifest.json ではなく、Cloud Portal の�
 
 1. **試験のために、入口のキャッシュとレート制限を外す**(試験が終わったら必ず戻します)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    EDGE_CACHE=off EDGE_GLOBAL_RATE=10000r/s docker compose up -d cdn-waf
    docker compose ps cdn-waf        # (healthy) を待つ
    ```
 
+   ```powershell [PowerShell]
+   $env:EDGE_CACHE = 'off'; $env:EDGE_GLOBAL_RATE = '10000r/s'; docker compose up -d cdn-waf
+   docker compose ps cdn-waf        # (healthy) を待つ
+   ```
+
+   :::
+
 2. **storefront 1 台のまま、400 人で 1 分半かける**(20 秒で 400 人まで増やし、60 秒続け、10 秒で片付け)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/k6.sh ramp.js -e TARGET=page --stage 20s:400 --stage 60s:400 --stage 10s:0 2>&1 \
      | grep -E 'http_req_duration\.\.|http_req_failed|http_reqs\.'
    ```
 
+   ```powershell [PowerShell]
+   tools/k6.ps1 ramp.js -e TARGET=page --stage 20s:400 --stage 60s:400 --stage 10s:0 `
+     | Select-String -Pattern 'http_req_duration\.\.|http_req_failed|http_reqs\.'
+   ```
+
+   :::
+
 3. **storefront を 3 台に増やす**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose up -d --scale storefront=3 --no-recreate storefront
    docker compose ps storefront
    ```
+
+   ```powershell [PowerShell]
+   docker compose up -d --scale storefront=3 --no-recreate storefront
+   docker compose ps storefront
+   ```
+
+   :::
 
    3 台とも `(healthy)` になったら、10 秒ほど待ちます(ingress が名前を調べ直すのを待つため)。
 
 4. **同じ負荷をもう一度かける**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/k6.sh ramp.js -e TARGET=page --stage 20s:400 --stage 60s:400 --stage 10s:0 2>&1 \
      | grep -E 'http_req_duration\.\.|http_req_failed|http_reqs\.'
    ```
 
+   ```powershell [PowerShell]
+   tools/k6.ps1 ramp.js -e TARGET=page --stage 20s:400 --stage 60s:400 --stage 10s:0 `
+     | Select-String -Pattern 'http_req_duration\.\.|http_req_failed|http_reqs\.'
+   ```
+
+   :::
+
 5. **3 台に均等に配られたか数える**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for c in 1 2 3; do printf 'lab-storefront-%s: ' $c; docker logs lab-storefront-$c --since 2m 2>&1 | grep -c '"route":"/p/:code"'; done
    ```
+
+   ```powershell [PowerShell]
+   foreach ($c in 1..3) { "lab-storefront-${c}: " + (docker logs lab-storefront-$c --since 2m | Select-String '"route":"/p/:code"').Count }
+   ```
+
+   :::
 
 ### 本格版では
 
 本格版(kind)では、台数を 1 行で変えられます。詳しくは `k8s/README.md`([準備と起動](/guide/setup))を見てください。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab get pods -l app.kubernetes.io/name=storefront -w    # 別のターミナルで、Pod が増える様子を見る
 kubectl -n lab scale deploy/storefront --replicas=4                # 4 台に増やす
 kubectl -n lab scale deploy/storefront --replicas=2                # 元の 2 台に戻す(k8s/up.sh でも戻る)
 ```
+
+```powershell [PowerShell]
+kubectl -n lab get pods -l app.kubernetes.io/name=storefront -w    # 別のターミナルで、Pod が増える様子を見る
+kubectl -n lab scale deploy/storefront --replicas=4                # 4 台に増やす
+kubectl -n lab scale deploy/storefront --replicas=2                # 元の 2 台に戻す(k8s/up.ps1 でも戻る)
+```
+
+:::
 
 ## 4. 何が見えたら成功か
 
@@ -165,9 +219,21 @@ lab-storefront-3: 6725
 
 台数を 1 台に戻し、入口の設定も戻します。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose up -d --scale storefront=1 storefront
 docker compose up -d cdn-waf        # EDGE_CACHE・EDGE_GLOBAL_RATE を付けずに起動 = 既定に戻る
 docker compose ps storefront cdn-waf
 docker compose exec -T cdn-waf printenv EDGE_CACHE EDGE_GLOBAL_RATE   # on / 20r/s ならよい
 ```
+
+```powershell [PowerShell]
+docker compose up -d --scale storefront=1 storefront
+Remove-Item Env:EDGE_CACHE, Env:EDGE_GLOBAL_RATE -ErrorAction SilentlyContinue   # 手順 1 で入れた環境変数を消す
+docker compose up -d cdn-waf        # EDGE_CACHE・EDGE_GLOBAL_RATE を付けずに起動 = 既定に戻る
+docker compose ps storefront cdn-waf
+docker compose exec -T cdn-waf printenv EDGE_CACHE EDGE_GLOBAL_RATE   # on / 20r/s ならよい
+```
+
+:::

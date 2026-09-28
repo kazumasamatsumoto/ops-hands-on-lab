@@ -195,11 +195,19 @@ spec:
 
 ## 4. 確かめるコマンド {#s4}
 
-本格版を `LAB_ENV=p1 k8s/up.sh` で起動してから試します(既定は p1)。
+本格版を `LAB_ENV=p1 k8s/up.sh`(PowerShell では `k8s/up.ps1 -Env p1`)で起動してから試します(既定は p1)。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab get pods
 ```
+
+```powershell [PowerShell]
+kubectl -n lab get pods
+```
+
+:::
 
 期待する出力の形(名前の後ろの英数字は毎回変わります。並びは名前の順で、観測の道具の行は省いています):
 
@@ -229,7 +237,9 @@ worker-6f7d8c9b5-q5v8t        1/1     Running   1 (2m ago)    3m
 | `STATUS` | `Running`(動いている)・`Pending`(置き場所が無い。メモリ不足など)・`CrashLoopBackOff`(落ちては再起動を繰り返し、待ち時間が延びている)・`ImagePullBackOff`(イメージが取れない) |
 | `RESTARTS` | コンテナが再起動した回数。liveness の失敗や OOMKilled で増える |
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # Deployment・ReplicaSet・Service をまとめて見る
 kubectl -n lab get deploy,rs,svc
 
@@ -252,12 +262,49 @@ kubectl -n lab scale deploy/api --replicas=3
 kubectl -n lab scale deploy/api --replicas=2   # 戻す(k8s/up.sh をもう一度実行しても manifest の台数に戻ります)
 ```
 
+```powershell [PowerShell]
+# Deployment・ReplicaSet・Service をまとめて見る
+kubectl -n lab get deploy,rs,svc
+
+# 振り分け先(Pod の IP)と、それぞれが振り分けてよい状態か(ready=true / false)を見る
+kubectl -n lab get endpointslices -l kubernetes.io/service-name=api -o jsonpath='{range .items[*].endpoints[*]}{.addresses[0]}  ready={.conditions.ready}{"\n"}{end}'
+
+# ある Pod の詳しい様子(プローブの結果・再起動の理由・出来事)。get pods で見た名前を $pod に入れる
+$pod = 'api-6d5f7c9b8d-2xkqp'
+kubectl -n lab describe pod $pod
+#  Last State: Terminated  Reason: OOMKilled  Exit Code: 137  … メモリの上限を超えて殺された
+#  Readiness probe failed: HTTP probe failed with statuscode: 503 … /readyz が 503
+
+# ローリング更新を見る(別の端末で get pods -w を流しておくと、1 つずつ入れ替わる様子が見える)
+kubectl -n lab get pods -w
+kubectl -n lab rollout restart deploy/api
+kubectl -n lab rollout status deploy/api      # 「successfully rolled out」で完了
+kubectl -n lab rollout undo deploy/api        # 1 つ前の版に戻す
+
+# 台数を変える(本来は manifest.json を直して作り直すのが筋。ここでは体験だけ)
+kubectl -n lab scale deploy/api --replicas=3
+kubectl -n lab scale deploy/api --replicas=2   # 戻す(k8s/up.ps1 をもう一度実行しても manifest の台数に戻ります)
+```
+
+:::
+
+PowerShell では `<Pod の名前>` のような `<` `>` の書き方がそのままでは打てないので、名前をいったん `$pod` に入れています。
+
 軽量版(docker compose)には Pod も ReplicaSet もありません。近い物は次のとおりです。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose ps          # STATUS の (healthy) は、HEALTHCHECK の結果(api・backoffice・worker は /readyz、storefront は /healthz)
 docker inspect --format '{{.State.OOMKilled}}' lab-api-1   # メモリ上限で殺されたか
 ```
+
+```powershell [PowerShell]
+docker compose ps          # STATUS の (healthy) は、HEALTHCHECK の結果(api・backoffice・worker は /readyz、storefront は /healthz)
+docker inspect --format '{{.State.OOMKilled}}' lab-api-1   # メモリ上限で殺されたか
+```
+
+:::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

@@ -45,16 +45,29 @@ CORS の許可は、CCv2 の `corsfilter`(OCC の CORS の設定)に当たりま
 
 1. **CORS の許可ヘッダを `curl` で確かめる**。`Origin` はブラウザが自動で付ける「どのサイトの画面から来たか」のヘッダです。ここでは手で付けて試します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080/occ/v2/samplestore/products/100001
    curl -s -D - -o /dev/null -H 'Origin: http://www.lab.localhost:18080' "$A" | grep -iE '^HTTP|access-control|^vary'
    echo ---
    curl -s -D - -o /dev/null -H 'Origin: http://evil.example' "$A" | grep -iE '^HTTP|access-control|^vary'
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080/occ/v2/samplestore/products/100001'
+   curl.exe -s -D - -o NUL -H 'Origin: http://www.lab.localhost:18080' $A | Select-String -Pattern '^HTTP|access-control|^vary'
+   '---'
+   curl.exe -s -D - -o NUL -H 'Origin: http://evil.example' $A | Select-String -Pattern '^HTTP|access-control|^vary'
+   ```
+
+   :::
+
 2. **下見(プリフライト)を試す**。注文の API は `Authorization` を付けるので、ブラウザは本番の前に `OPTIONS` で「送ってよいか」を確かめます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    O=http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders
    curl -s -D - -o /dev/null -X OPTIONS -H 'Origin: http://www.lab.localhost:18080' \
      -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization' "$O" | grep -iE '^HTTP|access-control'
@@ -62,6 +75,17 @@ CORS の許可は、CCv2 の `corsfilter`(OCC の CORS の設定)に当たりま
    curl -s -D - -o /dev/null -X OPTIONS -H 'Origin: http://evil.example' \
      -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization' "$O" | grep -iE '^HTTP'
    ```
+
+   ```powershell [PowerShell]
+   $O = 'http://api.lab.localhost:18080/occ/v2/samplestore/users/current/orders'
+   curl.exe -s -D - -o NUL -X OPTIONS -H 'Origin: http://www.lab.localhost:18080' `
+     -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization' $O | Select-String -Pattern '^HTTP|access-control'
+   '---'
+   curl.exe -s -D - -o NUL -X OPTIONS -H 'Origin: http://evil.example' `
+     -H 'Access-Control-Request-Method: GET' -H 'Access-Control-Request-Headers: authorization' $O | Select-String -Pattern '^HTTP'
+   ```
+
+   :::
 
 3. **ブラウザで、別オリジンから読んでみる**。ラボの pager(http://localhost:19094)は、ポート番号が違うので「別のオリジン」です。pager を開き、開発者ツール(F12)の「コンソール」に次を貼ります。
    Chrome で初めてコンソールに貼ると、貼り付けについての警告が出て、貼れないことがあります。そのときは、コンソールに `allow pasting`(Chrome の表示が日本語なら `貼り付けを許可`)と手で打って Enter を押してから、もう一度貼ります。
@@ -74,13 +98,23 @@ CORS の許可は、CCv2 の `corsfilter`(OCC の CORS の設定)に当たりま
 
 4. **CORS は「サーバーの壁」ではないことを確かめる**。`Origin` を付けない `curl`(= ブラウザではない道具)は、CORS に関係なく答えを読めます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w 'curl(no Origin): %{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w 'curl(no Origin): %{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001
+   ```
+
+   :::
+
 5. **管理画面の IP フィルタを見る**。この PC(社内扱い)からと、社外の代わりのネットワーク `lab_outside` からで比べます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf
    curl -s -o /dev/null -w 'この PC → backoffice: %{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login
    docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → backoffice: %{http_code}\n' \
@@ -90,12 +124,35 @@ CORS の許可は、CCv2 の `corsfilter`(OCC の CORS の設定)に当たりま
    docker compose logs ingress --no-log-prefix --since 1m | grep 'access forbidden' | tail -1
    ```
 
+   ```powershell [PowerShell]
+   docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf
+   curl.exe -s -o NUL -w 'この PC → backoffice: %{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → backoffice: %{http_code}\n' `
+     -H 'Host: backoffice.lab.localhost' http://cdn-waf:18080/backoffice/login
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → www(お店): %{http_code}\n' `
+     -H 'Host: www.lab.localhost' http://cdn-waf:18080/
+   docker compose logs ingress --no-log-prefix --since 1m | Select-String 'access forbidden' | Select-Object -Last 1
+   ```
+
+   :::
+
+   `docker run … curlimages/curl` の curl はコンテナ(Linux)の中で動くので、PowerShell でも `-o /dev/null` のままです。
+
 6. **偽の IP は信じないことを確かめる**。社外から、自分で `X-Forwarded-For: 127.0.0.1`(= 社内のふり)を付けても通りません。cdn-waf が `X-Forwarded-For` を本当の送り元の IP で上書きし、ingress は cdn-waf から来たときだけその値を信じるからです。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外+偽XFF → backoffice: %{http_code}\n' \
      -H 'Host: backoffice.lab.localhost' -H 'X-Forwarded-For: 127.0.0.1' http://cdn-waf:18080/backoffice/login
    ```
+
+   ```powershell [PowerShell]
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外+偽XFF → backoffice: %{http_code}\n' `
+     -H 'Host: backoffice.lab.localhost' -H 'X-Forwarded-For: 127.0.0.1' http://cdn-waf:18080/backoffice/login
+   ```
+
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -185,6 +242,14 @@ deny all;
 
 この演習では設定を変えていません(手順 5〜6 は読むだけです)。ブラウザのコンソールで試したことも、ページを閉じれば消えます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh status        # すべて既定値(false / 0)のままならよい
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 status       # すべて既定値(false / 0)のままならよい
+```
+
+:::

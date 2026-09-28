@@ -45,28 +45,60 @@ title: SRE-2 エラーバジェットとアラート
 
 1. **前の演習のアラートや指標が残っていないか、まっさらにする**(Alertmanager は同じ通知を 1 時間は送り直さないため、残っていると pager に何も届きません)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose rm -sf prometheus alertmanager pager
    docker volume rm lab_prometheus-data
    docker compose up -d prometheus alertmanager pager
    ```
 
+   ```powershell [PowerShell]
+   docker compose rm -sf prometheus alertmanager pager
+   docker volume rm lab_prometheus-data
+   docker compose up -d prometheus alertmanager pager
+   ```
+
+   :::
+
 2. **api の半分を 500 にして、お客様のまねを 3 分走らせる**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set errorRate=0.5
    tools/k6.sh browse.js -e DURATION=3m -e PAGES=0
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set errorRate=0.5
+   tools/k6.ps1 browse.js -e DURATION=3m -e PAGES=0
+   ```
+
+   :::
+
 3. **k6 を走らせている間に、別のターミナルでアラートの状態を見る**。http://localhost:19090/alerts を開いて再読み込みするか、次のコマンドで 10 秒ごとに表示します(Ctrl+C で止める)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    while true; do
      printf '%s ' "$(date +%H:%M:%S)"
      curl -s http://localhost:19090/api/v1/alerts | python3 -c 'import json,sys;print(" ".join(sorted(a["labels"]["alertname"]+"="+a["state"] for a in json.load(sys.stdin)["data"]["alerts"] if a["labels"]["alertname"].startswith("Error"))))'
      sleep 10
    done
    ```
+
+   ```powershell [PowerShell]
+   while ($true) {
+     $alerts = (curl.exe -s http://localhost:19090/api/v1/alerts | ConvertFrom-Json).data.alerts
+     $names = $alerts | Where-Object { $_.labels.alertname.StartsWith('Error') } | ForEach-Object { "$($_.labels.alertname)=$($_.state)" } | Sort-Object
+     "$(Get-Date -Format HH:mm:ss) $($names -join ' ')"
+     Start-Sleep 10
+   }
+   ```
+
+   :::
 
 4. **バーンレートの値を見る**。Prometheus の「Query」で次を実行します。
 
@@ -81,9 +113,17 @@ title: SRE-2 エラーバジェットとアラート
 
 6. **スイッチを戻して、アラートが止むのを見る**(k6 はそのまま走らせておいてかまいません)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh reset
    ```
+
+   ```powershell [PowerShell]
+   tools/chaos.ps1 reset
+   ```
+
+   :::
 
    1 分窓はすぐ 0 に戻り、5 分窓は 5 分かけて下がります。pager に状態が「解消」(resolved)の通知が届くのを待ちます(届いたばかりの通知は「発生中」と表示されます)。
 
@@ -98,7 +138,7 @@ title: SRE-2 エラーバジェットとアラート
 12:05:57 ErrorBudgetBurnDemo=firing ErrorBudgetBurnPage=firing ErrorBudgetBurnTicket=pending    ← 約 90 秒
 ```
 
-(手順 1 の直後に打つと、Prometheus の起動が終わる前の数秒だけ `JSONDecodeError` が出ることがあります。10 秒後の次の行から正しく出ます。)
+(手順 1 の直後に打つと、Prometheus の起動が終わる前の数秒だけ `JSONDecodeError`(PowerShell では `ConvertFrom-Json` のエラー)が出ることがあります。10 秒後の次の行から正しく出ます。)
 
 **手順 4**: api のエラー率は約 54%、バーンレートは約 540。「1 か月の予算を約 1.3 時間で使い切る」速さです(30 日 × 24 時間 ÷ 540 ≈ 1.3)。
 
@@ -162,8 +202,16 @@ http_req_failed................: 17.27% 114 out of 660
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh reset
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 reset
+```
+
+:::
 
 Ticket(警告)は長い窓を見ているので、しばらく残ります。急いで消したいときは、手順 1 のまっさらにするコマンドをもう一度実行します。

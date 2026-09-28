@@ -85,7 +85,7 @@ CCv2 でも、開発・検証の環境は社内の IP だけに絞り、本番�
 ## 注意
 
 - `ipFilters.office` の 3 つの範囲: `127.0.0.1/32` は「ホスト PC から来た」通信(cdn-waf がこの番号で伝えます)、`172.30.89.0/24` は軽量版の
-  Docker ネットワーク、`172.30.91.0/24` は本格版の kind のネットワーク `lab-kind`(k8s/up.sh が番号を固定して作ります)。
+  Docker ネットワーク、`172.30.91.0/24` は本格版の kind のネットワーク `lab-kind`(k8s/up.sh、PowerShell 版は k8s/up.ps1 が番号を固定して作ります)。
   社外の代わりのネットワーク(軽量版 `172.30.90.0/24`、本格版 `172.30.92.0/24`)は入れないので、そこからは 403 になります。
 - 本格版の ingress-nginx が「利用者の IP」を知る仕組み: cdn-waf が `X-Forwarded-For` に利用者の IP を書き、ingress-nginx は
   `lab-kind` のネットワーク(= CDN の IP の範囲)から来たときだけそれを信じます(`k8s/vendor/ingress-nginx/kustomization.yaml` の `proxy-real-ip-cidr`)。

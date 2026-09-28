@@ -46,7 +46,9 @@ CCv2 の案件では、OCC を **拡張して新しい API を足す** ときに
 
 1. **alice のトークンをもらう**。まず返事の全体を見て、次にトークンだけを `TOKEN` という名前でシェルに覚えさせます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s http://api.lab.localhost:18080/authorizationserver/oauth/token \
      -d 'grant_type=password&client_id=storefront&username=alice&password=password'; echo
    TOKEN=$(curl -s http://api.lab.localhost:18080/authorizationserver/oauth/token \
@@ -55,9 +57,24 @@ CCv2 の案件では、OCC を **拡張して新しい API を足す** ときに
    echo ${TOKEN:0:12}...
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/token `
+     -d 'grant_type=password&client_id=storefront&username=alice&password=password'; ''
+   $TOKEN = (curl.exe -s http://api.lab.localhost:18080/authorizationserver/oauth/token `
+     -d 'grant_type=password&client_id=storefront&username=alice&password=password' `
+     | ConvertFrom-Json).access_token
+   "$($TOKEN.Substring(0,12))..."
+   ```
+
+   :::
+
+   PowerShell では python3 の代わりに、JSON を読む標準のコマンド `ConvertFrom-Json` を使います(以降の手順も同じです)。
+
 2. **トークン無しと、有りで呼ぶ**。トークン無しは 401、有りなら「誰か」と alice の注文だけが返ります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080/occ/v2/samplestore
    curl -s -w ' %{http_code}\n' $A/users/current/orders
    curl -s -H "Authorization: Bearer $TOKEN" $A/users/current; echo
@@ -65,16 +82,37 @@ CCv2 の案件では、OCC を **拡張して新しい API を足す** ときに
      | python3 -c 'import json,sys;[print(o["code"],o["status"],o["total"]["formattedValue"],o["placed"][:10]) for o in json.load(sys.stdin)["orders"]]'
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080/occ/v2/samplestore'
+   curl.exe -s -w ' %{http_code}\n' "$A/users/current/orders"
+   curl.exe -s -H "Authorization: Bearer $TOKEN" "$A/users/current"; ''
+   (curl.exe -s -H "Authorization: Bearer $TOKEN" "$A/users/current/orders" | ConvertFrom-Json).orders `
+     | ForEach-Object { '{0} {1} {2} {3}' -f $_.code, $_.status, $_.total.formattedValue, $_.placed.ToString('yyyy-MM-dd') }
+   ```
+
+   :::
+
 3. **他人の注文番号を試す(正しい状態)**。alice の注文は `00001001`〜`00001003` です。`00001004` は bob の注文、`00009999` は存在しない番号です。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" $A/users/current/orders/00001004
    curl -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" $A/users/current/orders/00009999
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$A/users/current/orders/00001004"
+   curl.exe -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$A/users/current/orders/00009999"
+   ```
+
+   :::
+
 4. **認可の穴を開ける**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set idorBug=true
    for c in 00001004 00001005 00001006 00001007 00001008 00001009; do
      curl -s -H "Authorization: Bearer $TOKEN" $A/users/current/orders/$c \
@@ -82,29 +120,67 @@ CCv2 の案件では、OCC を **拡張して新しい API を足す** ときに
    done
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set idorBug=true
+   foreach ($c in '00001004', '00001005', '00001006', '00001007', '00001008', '00001009') {
+     $d = curl.exe -s -H "Authorization: Bearer $TOKEN" "$A/users/current/orders/$c" | ConvertFrom-Json
+     '{0} {1} {2} {3}' -f $d.code, $d.user.uid, $d.total.formattedValue, $d.errors.type
+   }
+   ```
+
+   :::
+
+   PowerShell では、無い項目は `None` ではなく空白で出ます(最後の 1 行は `   UnknownIdentifierError` のように見えます)。
+
    番号を 1 つずつ変えるだけで、他人の注文が次々に読めます。ブラウザで alice としてログインし(http://www.lab.localhost:18080/login)、
    http://www.lab.localhost:18080/my-account/orders/00001004 を開いても同じで、bob の注文が表示されます。
 
 5. **ログに残っているか見る**。この演習の api は、他人の注文を返したときに警告を出すようにしてあります(本物の事故では、たいてい何も残っていません)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs api --no-log-prefix | grep idorBug | tail -1
    ```
 
+   ```powershell [PowerShell]
+   docker compose logs api --no-log-prefix | Select-String 'idorBug' | Select-Object -Last 1
+   ```
+
+   :::
+
 6. **穴を閉じて、もう一度試す**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh reset
    curl -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" $A/users/current/orders/00001004
    ```
 
+   ```powershell [PowerShell]
+   tools/chaos.ps1 reset
+   curl.exe -s -w ' %{http_code}\n' -H "Authorization: Bearer $TOKEN" "$A/users/current/orders/00001004"
+   ```
+
+   :::
+
 7. **トークンが DB にどう置かれているか見る**(おまけ)。トークンそのものではなく、SHA-256 で変換した値(ハッシュ)と期限だけが入っています。
    DB を盗み見られても、そこからトークンを作り直せないようにするためです。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T db psql -U store -d store \
      -c "select left(token_hash,16)||'…' as token_hash, user_id, client_id, expires_at from oauth_access_tokens order by expires_at desc limit 2"
    ```
+
+   ```powershell [PowerShell]
+   docker compose exec -T db psql -U store -d store `
+     -c "select left(token_hash,16)||'…' as token_hash, user_id, client_id, expires_at from oauth_access_tokens order by expires_at desc limit 2"
+   ```
+
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -204,7 +280,16 @@ None None None UnknownIdentifierError
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh reset          # "idorBug":false に戻ったことを確かめる
 unset TOKEN A
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 reset         # "idorBug":false に戻ったことを確かめる
+Remove-Variable TOKEN, A
+```
+
+:::

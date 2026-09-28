@@ -6,7 +6,7 @@ title: セキュリティ-2 ログインの連打を止める
 
 ::: info この演習について
 - 所要時間: 約 10 分
-- 使うもの: 軽量版(docker compose)。`curl`
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)
 - 仕組みはこちら: [仕組み-2 ingress(エンドポイントと IP フィルタ)](/how-it-works/02-ingress-and-endpoints)・[仕組み-7 OAuth のトークン](/how-it-works/07-oauth-token)
 - 関係する設計書: [セキュリティ方式](/design/architecture/10-security)・[D-SEC-01 WAF とレート制限](/design/detail/D-SEC-01-waf-and-rate-limit)
 - 用語集: [レート制限](/guide/glossary#rate-limit)・[バースト](/guide/glossary#burst)・[429](/guide/glossary#http-429)
@@ -45,14 +45,25 @@ api はわざと「何度失敗してもロックしない」作りにしてい�
 
 1. まず正しいパスワードでトークンをもらえることを確かめます(`alice` / `password`)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    A=http://api.lab.localhost:18080/authorizationserver/oauth/token
    curl -s -o /dev/null -w '%{http_code}\n' $A -d 'grant_type=password&client_id=storefront&username=alice&password=password'
    ```
 
+   ```powershell [PowerShell]
+   $A = 'http://api.lab.localhost:18080/authorizationserver/oauth/token'
+   curl.exe -s -o NUL -w '%{http_code}\n' $A -d 'grant_type=password&client_id=storefront&username=alice&password=password'
+   ```
+
+   :::
+
 2. 6 秒待ってから(手順 1 で使った 1 回分の「ため」が戻るのを待ちます)、**間違ったパスワード** を 10 回続けて送ります(この手元のラボにだけ)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    sleep 6
    for i in $(seq 1 10); do
      printf '%2d回目: ' $i
@@ -60,24 +71,60 @@ api はわざと「何度失敗してもロックしない」作りにしてい�
    done
    ```
 
+   ```powershell [PowerShell]
+   Start-Sleep 6
+   foreach ($i in 1..10) {
+     Write-Host -NoNewline ("{0,2}回目: " -f $i)
+     curl.exe -s -o NUL -w '%{http_code}\n' $A -d 'grant_type=password&client_id=storefront&username=alice&password=wrong'
+   }
+   ```
+
+   :::
+
 3. 止められているあいだに、商品の一覧が見られるかを確かめます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001
+   ```
+
+   :::
+
 4. 6 秒待ってから、正しいパスワードでもう一度もらいます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    sleep 6
    curl -s -o /dev/null -w '%{http_code}\n' $A -d 'grant_type=password&client_id=storefront&username=alice&password=password'
    ```
 
+   ```powershell [PowerShell]
+   Start-Sleep 6
+   curl.exe -s -o NUL -w '%{http_code}\n' $A -d 'grant_type=password&client_id=storefront&username=alice&password=password'
+   ```
+
+   :::
+
 5. ingress のログで、止めた記録を見ます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs ingress --no-log-prefix | grep 'limiting requests' | tail -2 | cut -c1-160
    ```
+
+   ```powershell [PowerShell]
+   docker compose logs ingress --no-log-prefix | Select-String 'limiting requests' | Select-Object -Last 2 `
+     | ForEach-Object { $_.Line.Substring(0, [Math]::Min(160, $_.Line.Length)) }
+   ```
+
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -108,7 +155,7 @@ api はわざと「何度失敗してもロックしない」作りにしてい�
 
 **手順 4**: 少し待てば、正しいパスワードで `200` に戻ります。本人は、待てば普通に使えます。
 
-**手順 5**: ingress が止めた記録が残ります(`cut -c1-160` で行の後ろを切っています。時刻は世界標準時です)。
+**手順 5**: ingress が止めた記録が残ります(`cut -c1-160`(PowerShell は `Substring`)で行の後ろを切っています。時刻は世界標準時です)。
 
 ```text
 2026/09/26 03:39:57 [warn] 45#45: *68703 limiting requests, excess: 5.678 by zone "login", client: 127.0.0.1, server: api.lab.localhost, request: "POST /authori
@@ -147,8 +194,18 @@ api はわざと「何度失敗してもロックしない」作りにしてい�
 
 この演習は設定を変えていません。少し待てば「ため」が戻り、いつも通りログインできます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 sleep 6
 curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/authorizationserver/oauth/token \
   -d 'grant_type=password&client_id=storefront&username=alice&password=password'   # 200 ならよい
 ```
+
+```powershell [PowerShell]
+Start-Sleep 6
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/authorizationserver/oauth/token `
+  -d 'grant_type=password&client_id=storefront&username=alice&password=password'   # 200 ならよい
+```
+
+:::

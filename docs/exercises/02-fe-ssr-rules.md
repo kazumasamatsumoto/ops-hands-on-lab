@@ -43,35 +43,73 @@ CCv2 の見張り(Dynatrace)では「storefront の 5xx の割合」で気づく
 
 1. **壊すスイッチを入れる**(storefront を作り直します)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    SSR_WINDOW_BUG=true docker compose up -d storefront
    docker compose ps storefront        # (healthy) になるのを待つ
    ```
+
+   ```powershell [PowerShell]
+   $env:SSR_WINDOW_BUG = 'true'; docker compose up -d storefront
+   docker compose ps storefront        # (healthy) になるのを待つ
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   `$env:SSR_WINDOW_BUG = 'true'` は同じウィンドウで打つ以後のコマンド全部に効き続けます。戻すときは `Remove-Item Env:SSR_WINDOW_BUG` を先に打ちます(片付けの PowerShell タブに入れてあります)。
+   :::
 
    `healthy` になることに注目してください。**死活監視は「プロセスが生きているか」しか見ていない** ので、画面が壊れていても緑です。
 
 2. **画面を取ってみる**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -D - "http://www.lab.localhost:18080/?t=bug" | grep -iE '^HTTP|x-render-mode|<h1>'
    for p in / /p/100001 /login; do curl -s -o /dev/null -w "$p %{http_code}\n" "http://www.lab.localhost:18080$p"; done
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -s -D - 'http://www.lab.localhost:18080/?t=bug' | Select-String -Pattern '^HTTP|x-render-mode|<h1>'
+   foreach ($p in '/', '/p/100001', '/login') { curl.exe -s -o NUL -w "$p %{http_code}\n" "http://www.lab.localhost:18080$p" }
+   ```
+
+   :::
 
    直前の 30 秒以内にトップや商品の画面を開いていると、その URL だけは cdn-waf の作り置き(壊す前の 200)が返ることがあります。30 秒待ってからもう一度打つと 500 になります。
 
 3. **storefront のログを見る**。1 行が 1 つの JSON になっています。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose logs storefront --no-log-prefix | grep ssr_error | tail -2
    ```
 
+   ```powershell [PowerShell]
+   docker compose logs storefront --no-log-prefix | Select-String 'ssr_error' | Select-Object -Last 2
+   ```
+
+   :::
+
 4. **指標とアラートを見る**。1 秒おきに 20 回画面を開いてから(約 20 秒)、1〜2 分待ちます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in $(seq 1 20); do curl -s -o /dev/null http://www.lab.localhost:18080/login; sleep 1; done
    ```
 
-   `sleep 1` を外して一瞬で 20 回開くと、Prometheus が数字を集める(5 秒ごと)前に全部終わってしまい、「500 が増えた」ことが記録されにくくなります。
+   ```powershell [PowerShell]
+   foreach ($i in 1..20) { curl.exe -s -o NUL http://www.lab.localhost:18080/login; Start-Sleep 1 }
+   ```
+
+   :::
+
+   `sleep 1`(PowerShell では `Start-Sleep 1`)を外して一瞬で 20 回開くと、Prometheus が数字を集める(5 秒ごと)前に全部終わってしまい、「500 が増えた」ことが記録されにくくなります。
 
    - Prometheus(http://localhost:19090)の「Query」で `ssr_errors_total` と `job:ssr_errors:rate5m` を実行します。
    - 「Alerts」を開くと `SSRErrors` が `firing`(鳴っている)になります。
@@ -81,12 +119,25 @@ CCv2 の見張り(Dynatrace)では「storefront の 5xx の割合」で気づく
 
 5. **同じバグのまま CSR にする**。ブラウザで組み立てるなら、`window` があるので動きます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    SSR_WINDOW_BUG=true RENDER_MODE=csr docker compose up -d storefront
    docker compose ps storefront        # (healthy) を待つ
    for p in / /login /p/100001; do curl -s -o /dev/null -w "$p %{http_code} %header{x-render-mode}\n" "http://www.lab.localhost:18080$p?t=2"; done
    docker compose logs storefront --no-log-prefix | grep '"storefront started"' | tail -1
    ```
+
+   ```powershell [PowerShell]
+   $env:SSR_WINDOW_BUG = 'true'; $env:RENDER_MODE = 'csr'; docker compose up -d storefront
+   docker compose ps storefront        # (healthy) を待つ
+   foreach ($p in '/', '/login', '/p/100001') { curl.exe -s -o NUL -w "$p %{http_code} %header{x-render-mode}\n" "http://www.lab.localhost:18080${p}?t=2" }
+   docker compose logs storefront --no-log-prefix | Select-String '"storefront started"' | Select-Object -Last 1
+   ```
+
+   :::
+
+   PowerShell の URL で `${p}` と書いているのは、`$p?` と続けると `?` まで変数の名前だと思われるためです。
 
    ブラウザで http://www.lab.localhost:18080/?t=3 を開くと、トップが普通に表示され、画面下は「描画モード: CSR(ブラウザで描画)」です。
 
@@ -167,11 +218,21 @@ pager:   15:08:42 発生中 ErrorBudgetBurnDemo storefront
 
 スイッチを戻して、SSR に戻します。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose up -d storefront
 docker compose ps storefront                                                      # (healthy) を待つ
 curl -s -o /dev/null -w '%{http_code} %header{x-render-mode}\n' http://www.lab.localhost:18080/login   # 200 ssr ならよい
 ```
+
+```powershell [PowerShell]
+Remove-Item Env:SSR_WINDOW_BUG, Env:RENDER_MODE -ErrorAction SilentlyContinue; docker compose up -d storefront   # 環境変数を消してから作り直す
+docker compose ps storefront                                                      # (healthy) を待つ
+curl.exe -s -o NUL -w '%{http_code} %header{x-render-mode}\n' http://www.lab.localhost:18080/login   # 200 ssr ならよい
+```
+
+:::
 
 アラートは 5 分ほどで自然に `resolved`(解決)になり、pager にも状態が「解消」の通知が届きます。
 警告(`ErrorBudgetBurnTicket`)は長い窓(30 分・6 時間)を見ているので、しばらく残ることがあります。次の演習に進んでかまいません。

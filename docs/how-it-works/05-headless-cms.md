@@ -162,13 +162,23 @@ export const CMS_COMPONENT_MAPPING: Readonly<Record<string, Type<unknown>>> = {
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 設計図(JSON)をそのまま見る。枠の位置と部品の種類だけを抜き出す
 curl -s 'http://api.lab.localhost:18080/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage' \
   | python3 -c 'import sys,json; p=json.load(sys.stdin); [print(s["position"], [c["typeCode"] for c in s["components"]["component"]]) for s in p["contentSlots"]["contentSlot"]]'
 ```
 
-期待する出力:
+```powershell [PowerShell]
+# 設計図(JSON)をそのまま見る。枠の位置と部品の種類だけを抜き出す(python3 の代わりに ConvertFrom-Json)
+$p = curl.exe -s 'http://api.lab.localhost:18080/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=homepage' | ConvertFrom-Json
+foreach ($s in $p.contentSlots.contentSlot) { "$($s.position) [$($s.components.component.typeCode -join ', ')]" }
+```
+
+:::
+
+期待する出力(PowerShell では `['…']` の引用符が無く `[SearchBoxComponent]` のように出ます):
 
 ```text
 SearchBox ['SearchBoxComponent']
@@ -180,7 +190,9 @@ Section4 ['ProductCarouselComponent']
 Footer ['CMSParagraphComponent']
 ```
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 同じ並びが、SSR の HTML の印(data-slot と data-cms-type)になっている
 curl -s http://www.lab.localhost:18080/ | grep -oE 'data-slot="[^"]*"|data-cms-type="[^"]*"'
 
@@ -192,13 +204,29 @@ curl -s -o /dev/null -w '%{http_code}\n' 'http://api.lab.localhost:18080/occ/v2/
 docker compose logs storefront | grep cms_unknown_component
 ```
 
+```powershell [PowerShell]
+# 同じ並びが、SSR の HTML の印(data-slot と data-cms-type)になっている
+curl.exe -s http://www.lab.localhost:18080/ | Select-String -Pattern 'data-slot="[^"]*"|data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value }
+
+# 無いページは 404
+curl.exe -s -o NUL -w '%{http_code}\n' 'http://api.lab.localhost:18080/occ/v2/samplestore/cms/pages?pageType=ContentPage&pageLabelOrId=nothing'
+# → 404
+
+# 知らない部品の警告(新しい typeCode を DB に足したときに出る)
+docker compose logs storefront | Select-String 'cms_unknown_component'
+```
+
+:::
+
 **backoffice の変更が画面に出るまで** を測ります。
 
 1. ブラウザで http://backoffice.lab.localhost:18080/backoffice/ を開き、`admin` / `admin` でログインします。
 2. 「トップページのバナー」の見出しを変えて保存します。
 3. すぐに次を打ちます。30 秒ほどは古い見出し、そのあと新しい見出しになります。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 while true; do
   printf '%s ' "$(date +%T)"
   curl -s -D - http://www.lab.localhost:18080/ -o /tmp/top.html | grep -i x-cache-status | tr -d '\r\n'
@@ -207,7 +235,19 @@ while true; do
 done   # Ctrl+C で止める
 ```
 
-キャッシュを切った状態(`EDGE_CACHE=off docker compose up -d cdn-waf`)で同じことをすると、すぐに変わります。これが d1 環境でキャッシュを切っている理由です。
+```powershell [PowerShell]
+while ($true) {
+  $t = Get-Date -Format HH:mm:ss
+  $cache = (curl.exe -s -D - http://www.lab.localhost:18080/ -o "$env:TEMP/top.html" | Select-String 'x-cache-status').Line -replace '[\r\n]', ''
+  $h1 = (Select-String -Path "$env:TEMP/top.html" -Pattern '<h1[^>]*>[^<]*</h1>' | Select-Object -First 1).Matches.Value
+  "$t $cache $h1"
+  Start-Sleep 5
+}   # Ctrl+C で止める
+```
+
+:::
+
+キャッシュを切った状態(`EDGE_CACHE=off docker compose up -d cdn-waf`。PowerShell では `$env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf`、戻すときは `Remove-Item Env:EDGE_CACHE; docker compose up -d cdn-waf`)で同じことをすると、すぐに変わります。これが d1 環境でキャッシュを切っている理由です。
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

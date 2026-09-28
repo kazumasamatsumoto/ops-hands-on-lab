@@ -6,7 +6,7 @@ title: ネットワーク-3 Ingress とエンドポイント
 
 ::: info この演習について
 - 所要時間: 約 20 分(本格版もやるなら +15 分)
-- 使うもの: 軽量版(docker compose)。`curl`、`docker run`(社外のふりをする)。本格版(kind)があれば Ingress リソースが見られます
+- 使うもの: 軽量版(docker compose)。`curl`(PowerShell は `curl.exe`)、`docker run`(社外のふりをする)。本格版(kind)があれば Ingress リソースが見られます
 - 仕組みはこちら: [仕組み-2 ingress(エンドポイントと IP フィルタ)](/how-it-works/02-ingress-and-endpoints)・[仕組み-1 cdn-waf(CDN と WAF)](/how-it-works/01-cdn-waf)・[仕組み-12 manifest と環境](/how-it-works/12-manifest-and-environments)
 - 関係する設計書: [ネットワーク方式](/design/architecture/04-network)・[D-NW-01 cdn-waf と ingress の経路とキャッシュ](/design/detail/D-NW-01-edge-route)
 - 用語集: [Ingress](/guide/glossary#ingress)・[エンドポイント](/guide/glossary#endpoint)・[IP フィルタ](/guide/glossary#ip-filter)・[X-Forwarded-For](/guide/glossary#x-forwarded-for)・[リバースプロキシ](/guide/glossary#reverse-proxy)
@@ -54,33 +54,64 @@ ingress のホスト名の振り分けは、Cloud Portal の「エンドポイ�
 
 1. **3 つのホスト名が、それぞれの窓口に行くのを見る**。ingress のログに、ホスト名・行き先(upstream)・利用者の IP が出ます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for h in www api backoffice; do curl -s -o /dev/null "http://$h.lab.localhost:18080/healthz"; done
    docker compose logs ingress --no-log-prefix --since 20s | grep '"uri":"/healthz"' \
      | python3 -c 'import sys,json;[print(d["host"],"→",d["upstream"],"(status",d["status"],", client",d["remote_addr"]+")") for d in map(json.loads, sys.stdin)]'
    ```
+
+   ```powershell [PowerShell]
+   foreach ($h in 'www', 'api', 'backoffice') { curl.exe -s -o NUL "http://${h}.lab.localhost:18080/healthz" }
+   docker compose logs ingress --no-log-prefix --since 20s | Select-String '"uri":"/healthz"' `
+     | ForEach-Object { $d = $_.Line | ConvertFrom-Json; "$($d.host) → $($d.upstream) (status $($d.status), client $($d.remote_addr))" }
+   ```
+
+   :::
 
    (ingress のログには、nginx の標準の 1 行と、このラボで足した JSON の 1 行の 2 つが出ます。ここでは JSON の方(`"uri":"/healthz"`)だけを選んでいます。)
    (`/healthz` は本来内部の口ですが、ここでは「どの窓口に振り分けられたか」を見るために使っています。窓口ごとの `upstream` が違うことに注目します。)
 
 2. **知らないホスト名は、どこにも行かない**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s http://localhost:18080/                                          # cdn-waf が案内を返す
    docker compose exec -T cdn-waf curl -s -H 'Host: shop.lab.localhost' http://ingress:8080/   # ingress は 404
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s http://localhost:18080/                                      # cdn-waf が案内を返す
+   docker compose exec -T cdn-waf curl -s -H 'Host: shop.lab.localhost' http://ingress:8080/   # ingress は 404(コンテナの中の curl なので .exe なし)
+   ```
+
+   :::
+
 3. **内部の口(`/admin`・`/metrics`・`/readyz`)が外から閉じているのを見る**。中からは開きます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for u in /admin/chaos /metrics /readyz; do curl -s -o /dev/null -w "%{http_code} api$u\n" "http://api.lab.localhost:18080$u"; done
    curl -s -o /dev/null -w "%{http_code} www/metrics\n" http://www.lab.localhost:18080/metrics
    docker compose exec -T api curl -s -o /dev/null -w '%{http_code} 中から api /metrics\n' http://localhost:3001/metrics
    ```
 
+   ```powershell [PowerShell]
+   foreach ($u in '/admin/chaos', '/metrics', '/readyz') { "$(curl.exe -s -o NUL -w '%{http_code}' "http://api.lab.localhost:18080$u") api$u" }
+   "$(curl.exe -s -o NUL -w '%{http_code}' http://www.lab.localhost:18080/metrics) www/metrics"
+   docker compose exec -T api curl -s -o /dev/null -w '%{http_code} 中から api /metrics\n' http://localhost:3001/metrics
+   ```
+
+   :::
+
 4. **管理画面の IP フィルタ(社内 = 200、社外 = 403)を見る**。この PC は「社内」、`lab_outside` は「社外」の代わりです。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf
    curl -s -o /dev/null -w '社内(この PC) → backoffice: %{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login
    docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → backoffice: %{http_code}\n' \
@@ -89,9 +120,24 @@ ingress のホスト名の振り分けは、Cloud Portal の「エンドポイ�
      -H 'Host: www.lab.localhost' http://cdn-waf:18080/
    ```
 
+   ```powershell [PowerShell]
+   docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf
+   "社内(この PC) → backoffice: $(curl.exe -s -o NUL -w '%{http_code}' http://backoffice.lab.localhost:18080/backoffice/login)"
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → backoffice: %{http_code}\n' `
+     -H 'Host: backoffice.lab.localhost' http://cdn-waf:18080/backoffice/login
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外 → www(お店): %{http_code}\n' `
+     -H 'Host: www.lab.localhost' http://cdn-waf:18080/
+   ```
+
+   :::
+
+   `docker run … curlimages/curl` の行は、コンテナの中の Linux の curl を動かしているので、PowerShell でも `-o /dev/null` のままです。
+
 5. **社内の範囲(BACKOFFICE_IP_ALLOWLIST)を変えて、この PC も締め出す**。許す範囲から 127.0.0.1 を外して起動し直すと、この PC からも 403 になります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    BACKOFFICE_IP_ALLOWLIST=172.30.89.0/24 docker compose up -d ingress
    docker compose ps ingress        # (healthy) を待つ
    docker compose logs ingress --no-log-prefix | grep -A2 'IP フィルタ' | tail -3   # 起動時に作った許す範囲
@@ -101,21 +147,53 @@ ingress のホスト名の振り分けは、Cloud Portal の「エンドポイ�
    curl -s -o /dev/null -w '元に戻した後: %{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login
    ```
 
+   ```powershell [PowerShell]
+   $env:BACKOFFICE_IP_ALLOWLIST = '172.30.89.0/24'; docker compose up -d ingress
+   docker compose ps ingress        # (healthy) を待つ
+   docker compose logs ingress --no-log-prefix | Select-String -Context 0,2 'IP フィルタ' | Select-Object -Last 1   # 起動時に作った許す範囲
+   "この PC → backoffice: $(curl.exe -s -o NUL -w '%{http_code}' http://backoffice.lab.localhost:18080/backoffice/login)"
+   Remove-Item Env:BACKOFFICE_IP_ALLOWLIST; docker compose up -d ingress     # 元に戻す(既定の許す範囲)
+   docker compose ps ingress
+   "元に戻した後: $(curl.exe -s -o NUL -w '%{http_code}' http://backoffice.lab.localhost:18080/backoffice/login)"
+   ```
+
+   :::
+
+   PowerShell の `Select-String -Context 0,2` は、当たった行の頭に `>` を付け、その下の 2 行も一緒に出します。
+
 6. **偽の IP は信じないことを確かめる**。社外から、自分で `X-Forwarded-For: 127.0.0.1`(社内のふり)を付けても通りません。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外+偽XFF → backoffice: %{http_code}\n' \
      -H 'Host: backoffice.lab.localhost' -H 'X-Forwarded-For: 127.0.0.1' http://cdn-waf:18080/backoffice/login
    ```
+
+   ```powershell [PowerShell]
+   docker run --rm --network lab_outside curlimages/curl:8.16.0 -s -o /dev/null -w '社外+偽XFF → backoffice: %{http_code}\n' `
+     -H 'Host: backoffice.lab.localhost' -H 'X-Forwarded-For: 127.0.0.1' http://cdn-waf:18080/backoffice/login
+   ```
+
+   :::
 
 ### 本格版では
 
 本格版(kind)では、この振り分けと IP フィルタは **Ingress リソース**(`k8s/generated/base/ingress.yaml`。manifest.json から render.mjs が作る)になり、ingress-nginx が読みます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab get ingress    # ホスト名 → どこへ、が一覧で見える
 kubectl -n lab get ingress -o custom-columns='NAME:.metadata.name,HOST:.spec.rules[0].host,PATH:.spec.rules[0].http.paths[*].path,ALLOW:.metadata.annotations.nginx\.ingress\.kubernetes\.io/allowlist-source-range,DENY:.metadata.annotations.nginx\.ingress\.kubernetes\.io/denylist-source-range,RPS:.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps'
 ```
+
+```powershell [PowerShell]
+kubectl -n lab get ingress    # ホスト名 → どこへ、が一覧で見える
+kubectl -n lab get ingress -o custom-columns='NAME:.metadata.name,HOST:.spec.rules[0].host,PATH:.spec.rules[0].http.paths[*].path,ALLOW:.metadata.annotations.nginx\.ingress\.kubernetes\.io/allowlist-source-range,DENY:.metadata.annotations.nginx\.ingress\.kubernetes\.io/denylist-source-range,RPS:.metadata.annotations.nginx\.ingress\.kubernetes\.io/limit-rps'
+```
+
+:::
 
 `backoffice` の Ingress には `allowlist-source-range`(社内の範囲)、内部の口の Ingress(`*-blocked`)には `denylist-source-range: 0.0.0.0/0`(全部拒否)、
 ログインの Ingress(`api-ratelimit-1`)には `limit-rps` の注釈が付いています。軽量版で nginx.conf に手で書いた振り分け・IP フィルタ・閉じる口が、注釈という形になっただけで、やっていることは同じです。
@@ -204,9 +282,19 @@ deny all;
 
 ## 8. 片付け
 
-手順 5 で `BACKOFFICE_IP_ALLOWLIST` を変えても、`docker compose up -d ingress`(つまみを付けずに起動)で既定に戻ります。念のため確かめます。
+手順 5 で `BACKOFFICE_IP_ALLOWLIST` を変えても、`docker compose up -d ingress`(つまみを付けずに起動)で既定に戻ります(PowerShell は、先に `Remove-Item Env:BACKOFFICE_IP_ALLOWLIST` で環境変数を消しておきます)。念のため確かめます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf   # 127.0.0.1/32 が入っていればよい
 curl -s -o /dev/null -w 'この PC → backoffice: %{http_code}\n' http://backoffice.lab.localhost:18080/backoffice/login   # 200 ならよい
 ```
+
+```powershell [PowerShell]
+Remove-Item Env:BACKOFFICE_IP_ALLOWLIST -ErrorAction SilentlyContinue; docker compose up -d ingress
+docker compose exec -T ingress cat /etc/nginx/ip-filters/backoffice.conf   # 127.0.0.1/32 が入っていればよい
+"この PC → backoffice: $(curl.exe -s -o NUL -w '%{http_code}' http://backoffice.lab.localhost:18080/backoffice/login)"   # 200 ならよい
+```
+
+:::

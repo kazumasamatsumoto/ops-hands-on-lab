@@ -173,7 +173,9 @@ const SOLR_TIMEOUT_MS = Number(process.env.SOLR_TIMEOUT_MS ?? 2000);
 
 軽量版(`SEARCH_PROVIDER=db`):
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # どちらで探したかは応答ヘッダで分かる(%E3%83%9A%E3%83%B3 は「ペン」。URL に日本語を生のまま書くと api が 400 を返すので、この形で送ります)
 curl -sI 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%E3%83%9A%E3%83%B3' | grep -i x-search-provider
 # → X-Search-Provider: db
@@ -187,9 +189,27 @@ docker compose logs worker | grep searchIndexJob | tail -1
 # → …"job":"searchIndexJob","result":"success","skipped":"SEARCH_PROVIDER=db なので索引は作りません"…
 ```
 
+```powershell [PowerShell]
+# どちらで探したかは応答ヘッダで分かる(%E3%83%9A%E3%83%B3 は「ペン」。URL に日本語を生のまま書くと api が 400 を返すので、この形で送ります)
+curl.exe -sI 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%E3%83%9A%E3%83%B3' | Select-String x-search-provider
+# → X-Search-Provider: db
+
+# 当たった件数と商品名
+$d = curl.exe -s 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%E3%83%9A%E3%83%B3&fields=BASIC' | ConvertFrom-Json
+"$($d.pagination.totalResults) $($d.products.name -join ', ')"
+
+# worker の searchIndexJob は「何もせず成功」
+docker compose logs worker | Select-String searchIndexJob | Select-Object -Last 1
+# → …"job":"searchIndexJob","result":"success","skipped":"SEARCH_PROVIDER=db なので索引は作りません"…
+```
+
+:::
+
 本格版(`SEARCH_PROVIDER=solr`):
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 日本語は --data-urlencode で %E3%83… の形に直して送ります(URL に生のまま書くと api が 400 を返します)
 curl -sIG --data-urlencode 'query=ペン' 'http://api.lab.localhost:18080/occ/v2/samplestore/products/search' | grep -i x-search-provider
 # → X-Search-Provider: solr
@@ -206,6 +226,30 @@ curl -sG -o /dev/null -w '%{http_code}\n' --data-urlencode 'query=ペン' 'http:
 curl -s -o /dev/null -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001               # → 200
 kubectl -n lab scale deploy/search --replicas=1
 ```
+
+```powershell [PowerShell]
+# 日本語は PowerShell の側で %E3%83… の形に直してから URL に入れます(URL に生のまま書くと api が 400 を返します)
+$q = [uri]::EscapeDataString('ペン')     # → %E3%83%9A%E3%83%B3
+curl.exe -sI "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$q" | Select-String x-search-provider
+# → X-Search-Provider: solr
+
+# 半角カタカナの「ﾍﾟﾝ」でも「ペン」と同じ件数が当たる(索引が全角・半角をそろえるため。軽量版の ILIKE では 0 件)
+foreach ($w in 'ペン', 'ﾍﾟﾝ') {
+  (curl.exe -s "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$([uri]::EscapeDataString($w))&fields=BASIC" | ConvertFrom-Json).pagination.totalResults
+}
+
+# Solr を止める → 検索だけ 503、商品詳細は 200
+kubectl -n lab scale deploy/search --replicas=0
+curl.exe -s -o NUL -w '%{http_code}\n' "http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=$q"   # → 503
+curl.exe -s -o NUL -w '%{http_code}\n' http://api.lab.localhost:18080/occ/v2/samplestore/products/100001               # → 200
+kubectl -n lab scale deploy/search --replicas=1
+```
+
+:::
+
+::: tip PowerShell
+`curl.exe` に日本語の引数(`--data-urlencode 'query=ペン'` など)を直接渡すと、Windows の文字コードの都合で化けて 0 件になることがあります。上のように `[uri]::EscapeDataString('ペン')` で先に `%E3%83…` の形に直してから、URL に入れて渡してください。
+:::
 
 503 のはずが 200 のときは、Solr がまだ止まりきっていないか、30 秒以内に同じ検索をしていて cdn-waf のキャッシュが返しています(p1・s1)。数秒待ち、`query=` の言葉を変えて打ち直してください。
 

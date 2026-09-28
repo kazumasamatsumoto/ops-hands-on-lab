@@ -159,10 +159,19 @@ cdn-waf のコンテナ名は `<クラスタ名>-cdn-waf`(既定のクラスタ�
 
 軽量版を `docker compose up -d --build` で起動してから試します。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # ① 1 回目の流れ: SSR の HTML に CMS の部品が入っている(JS なしで見える)
 curl -s http://www.lab.localhost:18080/p/100001 | grep -o 'data-cms-type="[^"]*"' | sort -u
 ```
+
+```powershell [PowerShell]
+# ① 1 回目の流れ: SSR の HTML に CMS の部品が入っている(JS なしで見える)
+curl.exe -s http://www.lab.localhost:18080/p/100001 | Select-String -Pattern 'data-cms-type="[^"]*"' -AllMatches | ForEach-Object { $_.Matches.Value } | Sort-Object -Unique
+```
+
+:::
 
 期待する出力(順番は違ってもかまいません):
 
@@ -174,17 +183,28 @@ data-cms-type="ProductDetailsComponent"
 data-cms-type="SearchBoxComponent"
 ```
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # ② 誰が描いたか・キャッシュに当たったか(2 回続けて打つ)
 curl -sI http://www.lab.localhost:18080/p/100001 | grep -iE 'x-render-mode|x-cache-status'
 ```
+
+```powershell [PowerShell]
+# ② 誰が描いたか・キャッシュに当たったか(2 回続けて打つ)
+curl.exe -sI http://www.lab.localhost:18080/p/100001 | Select-String -Pattern 'x-render-mode|x-cache-status'
+```
+
+:::
 
 ```text
 X-Render-Mode: ssr
 X-Cache-Status: MISS      ← 1 回目。2 回目(30 秒以内)は HIT
 ```
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # ③ ブラウザ向けの「表の入口」の住所が HTML に入っている
 curl -s http://www.lab.localhost:18080/ | grep -o '<meta name="api-public-url"[^>]*>'
 # → <meta name="api-public-url" content="http://api.lab.localhost:18080">
@@ -198,22 +218,51 @@ curl -sI -H 'Origin: http://www.lab.localhost:18080' \
 docker compose logs --tail=3 cdn-waf ingress storefront api
 ```
 
+```powershell [PowerShell]
+# ③ ブラウザ向けの「表の入口」の住所が HTML に入っている
+curl.exe -s http://www.lab.localhost:18080/ | Select-String -Pattern '<meta name="api-public-url"[^>]*>' -AllMatches | ForEach-Object { $_.Matches.Value }
+# → <meta name="api-public-url" content="http://api.lab.localhost:18080">
+
+# ④ 2 回目の流れ(ブラウザのまね): Origin を付けて api を呼ぶと、CORS の許可が返る
+curl.exe -sI -H 'Origin: http://www.lab.localhost:18080' `
+  'http://api.lab.localhost:18080/occ/v2/samplestore/products/search?query=%E3%83%9A%E3%83%B3' | Select-String 'access-control-allow-origin'   # %E3%83%9A%E3%83%B3 =「ペン」
+# → Access-Control-Allow-Origin: http://www.lab.localhost:18080
+
+# ⑤ 同じリクエストが各部品のログに残っているのを見る(新しい順に数行)
+docker compose logs --tail=3 cdn-waf ingress storefront api
+```
+
+:::
+
 ブラウザでは、開発者ツールの **Network** を開いてから `http://www.lab.localhost:18080/p/100001` を開きます。
 
 - 最初の表示: `100001`(HTML)と JS・CSS・画像だけ。`occ/v2` への fetch は **0 件**(TransferState のおかげ)。
 - 画面上のメニューの「文房具」をクリック: `products/search?...` への fetch が出ます。その行の **Request Headers** に `Origin`、**Response Headers** に `Access-Control-Allow-Origin` が見えます。
   (検索ボックスは普通の HTML のフォームなので、検索するとページごと読み直され、SSR の HTML が届きます。そのため fetch は出ません。)
 
-::: details 本格版(Kubernetes)で同じことを見る
+:::: details 本格版(Kubernetes)で同じことを見る
 URL とコマンドの形は同じです。ログは `kubectl -n lab logs` で見ます。
-```bash
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 docker logs --tail=3 lab-cdn-waf                                        # cdn-waf(クラスタの外なので docker で見る)
 kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=3  # ingress-nginx(アクセスログは 1 行 1 JSON。remote_addr・ingress・status。JSON でない行は ingress-nginx 自身のメッセージ)
 kubectl -n lab logs deploy/storefront --tail=3
 kubectl -n lab logs deploy/api --tail=3
 ```
-Deployment の名前は `storefront`・`api`・`backoffice`・`worker` で、ラベル `app.kubernetes.io/name=<名前>` が付いています。`deploy/api` と書くと 2 つある Pod の片方だけのログです。全部の Pod をまとめて見るときは `kubectl -n lab logs -l app.kubernetes.io/name=api --tail=3` とします。
+
+```powershell [PowerShell]
+docker logs --tail=3 lab-cdn-waf                                        # cdn-waf(クラスタの外なので docker で見る)
+kubectl -n ingress-nginx logs deploy/ingress-nginx-controller --tail=3  # ingress-nginx(アクセスログは 1 行 1 JSON。remote_addr・ingress・status。JSON でない行は ingress-nginx 自身のメッセージ)
+kubectl -n lab logs deploy/storefront --tail=3
+kubectl -n lab logs deploy/api --tail=3
+```
+
 :::
+
+Deployment の名前は `storefront`・`api`・`backoffice`・`worker` で、ラベル `app.kubernetes.io/name=<名前>` が付いています。`deploy/api` と書くと 2 つある Pod の片方だけのログです。全部の Pod をまとめて見るときは `kubectl -n lab logs -l app.kubernetes.io/name=api --tail=3` とします。
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

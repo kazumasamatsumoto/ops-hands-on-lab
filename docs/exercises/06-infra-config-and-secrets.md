@@ -56,22 +56,43 @@ CCv2 では、リポジトリの `manifest.json` に aspect・エンドポイン
 
 1. **コンテナの中の設定値を見る**。api・backoffice・worker は同じイメージ(`lab/api:local`)で、`ASPECT` だけが違います。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for s in api backoffice worker; do
      echo "== $s"; docker compose exec -T $s printenv | grep -E '^(ASPECT|PGHOST|PGPASSWORD|CORS|SEARCH|CRON|BACKOFFICE|LOG_LEVEL)' | sort
    done
    echo "== storefront"; docker compose exec -T storefront printenv | grep -E '^(RENDER|SSR|API_)' | sort
    ```
 
+   ```powershell [PowerShell]
+   foreach ($s in 'api', 'backoffice', 'worker') {
+     "== $s"; docker compose exec -T $s printenv | Select-String -Pattern '^(ASPECT|PGHOST|PGPASSWORD|CORS|SEARCH|CRON|BACKOFFICE|LOG_LEVEL)' | ForEach-Object { $_.Line } | Sort-Object
+   }
+   "== storefront"; docker compose exec -T storefront printenv | Select-String -Pattern '^(RENDER|SSR|API_)' | ForEach-Object { $_.Line } | Sort-Object
+   ```
+
+   :::
+
 2. **manifest と compose が食い違っていないか確かめる**。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    node tools/manifest/render.mjs --check
    ```
 
+   ```powershell [PowerShell]
+   node tools/manifest/render.mjs --check
+   ```
+
+   :::
+
 3. **manifest を 1 行変えて、できる物の違いを見る**。本番(p1)の api の台数を 2 → 3 にしてみます。変える前にコピーを取ります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp manifest.json /tmp/manifest.json.bak
    cp -r k8s/generated /tmp/generated.bak
    python3 - <<'EOF'
@@ -83,59 +104,144 @@ CCv2 では、リポジトリの `manifest.json` に aspect・エンドポイン
    diff -r /tmp/generated.bak k8s/generated
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item manifest.json "$env:TEMP/manifest.json.bak"
+   Copy-Item -Recurse k8s/generated "$env:TEMP/generated.bak"
+   $m = Get-Content -Raw manifest.json | ConvertFrom-Json
+   $m.environments.p1.replicas.api = 3
+   [IO.File]::WriteAllText("$PWD/manifest.json", ($m | ConvertTo-Json -Depth 100))
+   node tools/manifest/render.mjs
+   git diff --no-index "$env:TEMP/generated.bak" k8s/generated
+   ```
+
+   :::
+
+   PowerShell には `diff` が無いので、git の「2 つのファイル(フォルダ)を比べる」機能 `git diff --no-index` を使います。違いは git の形式(`-`/`+` の行)で出ます。
+
    終わったら元に戻します(`render.mjs` をもう一度動かして、できる物も戻します)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    cp /tmp/manifest.json.bak manifest.json && node tools/manifest/render.mjs
    diff -r /tmp/generated.bak k8s/generated && echo 元に戻っています
    ```
 
+   ```powershell [PowerShell]
+   Copy-Item "$env:TEMP/manifest.json.bak" manifest.json && node tools/manifest/render.mjs
+   git diff --no-index "$env:TEMP/generated.bak" k8s/generated && Write-Output 元に戻っています
+   ```
+
+   :::
+
 4. **食い違いを見つける仕組みを試す**。manifest の api の `CORS_ALLOWED_ORIGINS` を別の値にして `--check` を動かし、すぐ戻します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    sed -i.tmp 's#"CORS_ALLOWED_ORIGINS": "http://www.lab.localhost:18080"#"CORS_ALLOWED_ORIGINS": "http://shop.lab.localhost:18080"#' manifest.json && rm manifest.json.tmp
    node tools/manifest/render.mjs --check; echo "終了コード=$?"
    cp /tmp/manifest.json.bak manifest.json
    ```
 
+   ```powershell [PowerShell]
+   $f = "$PWD/manifest.json"
+   [IO.File]::WriteAllText($f, ([IO.File]::ReadAllText($f) -replace '"CORS_ALLOWED_ORIGINS": "http://www\.lab\.localhost:18080"', '"CORS_ALLOWED_ORIGINS": "http://shop.lab.localhost:18080"'))
+   node tools/manifest/render.mjs --check; "終了コード=$LASTEXITCODE"
+   Copy-Item "$env:TEMP/manifest.json.bak" manifest.json
+   ```
+
+   :::
+
 5. **環境 d1 と p1 の違いを YAML で見比べる**。`kubectl kustomize` は、クラスタが無くても「共通(base)+ 環境の差分(overlay)」を組み立てた最終の YAML を出します。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    diff <(kubectl kustomize k8s/generated/envs/d1) <(kubectl kustomize k8s/generated/envs/p1)
    ```
 
+   ```powershell [PowerShell]
+   kubectl kustomize k8s/generated/envs/d1 > "$env:TEMP/d1.yaml"
+   kubectl kustomize k8s/generated/envs/p1 > "$env:TEMP/p1.yaml"
+   git diff --no-index "$env:TEMP/d1.yaml" "$env:TEMP/p1.yaml"
+   ```
+
+   :::
+
 6. **秘密の値の置き方を見る**。manifest には秘密の「名前」だけがあり、Deployment は `secretKeyRef`(入れ物 `lab-secrets` の鍵 `PGPASSWORD` を使う)で値を受け取ります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    kubectl kustomize k8s/generated/envs/p1 | grep -B3 -A4 'secretKeyRef' | head -20
    sed -n '1,20p' k8s/platform/secret.yaml
    ```
 
+   ```powershell [PowerShell]
+   kubectl kustomize k8s/generated/envs/p1 | Select-String 'secretKeyRef' -Context 3,4 | Select-Object -First 2
+   Get-Content k8s/platform/secret.yaml -TotalCount 20
+   ```
+
+   :::
+
+   PowerShell では、見つかった行の頭に `>` が付き、その前後の行と一緒に出ます(最初の 2 か所だけ)。
+
 7. **環境変数は「見える人には見える」ことを知る**。Docker を操作できる人は、コンテナの設定値をそのまま読めます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker inspect lab-backoffice-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | grep PASSWORD
    ```
 
+   ```powershell [PowerShell]
+   docker inspect lab-backoffice-1 --format '{{range .Config.Env}}{{println .}}{{end}}' | Select-String 'PASSWORD'
+   ```
+
+   :::
+
 8. **秘密のファイルが git に入らないことを確かめる**(リポジトリを git で取ってきた場合)。`.gitignore` に `.env.*` が書いてあります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    printf 'BACKOFFICE_PASSWORD=x\n' > .env.staging
    git check-ignore -v .env.staging manifest.json
    rm -f .env.staging
    ```
 
+   ```powershell [PowerShell]
+   [IO.File]::WriteAllText("$PWD/.env.staging", "BACKOFFICE_PASSWORD=x`n")
+   git check-ignore -v .env.staging manifest.json
+   Remove-Item -Force .env.staging     # 先頭が . のファイルは「隠しファイル」扱いになることがあるので -Force を付ける
+   ```
+
+   :::
+
 ### 本格版では
 
 本格版(kind)では、環境を切り替えて起動すると、manifest の `environments` の違いが実物に出ます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 LAB_ENV=d1 LAB_SKIP_BUILD=1 k8s/up.sh
 kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
 kubectl -n lab get configmap lab-environment -o yaml       # LAB_ENV=d1・EDGE_CACHE=off
 kubectl -n lab get secret lab-secrets -o yaml              # 値は base64 で書き換えただけ。読む権限がある人なら誰でも中身を読める
 LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh                      # 戻す
 ```
+
+```powershell [PowerShell]
+k8s/up.ps1 -Env d1 -SkipBuild
+kubectl -n lab get deploy                                  # storefront・api が 1 台ずつ
+kubectl -n lab get configmap lab-environment -o yaml       # LAB_ENV=d1・EDGE_CACHE=off
+kubectl -n lab get secret lab-secrets -o yaml              # 値は base64 で書き換えただけ。読む権限がある人なら誰でも中身を読める
+k8s/up.ps1 -Env p1 -SkipBuild                              # 戻す
+```
+
+:::
 
 ## 4. 何が見えたら成功か
 
@@ -272,9 +378,18 @@ BACKOFFICE_PASSWORD=admin
 
 manifest.json と `k8s/generated/` が元に戻っているか確かめます。
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 diff /tmp/manifest.json.bak manifest.json && diff -r /tmp/generated.bak k8s/generated && node tools/manifest/render.mjs --check
 rm -rf /tmp/manifest.json.bak /tmp/generated.bak
 ```
 
-本格版で `LAB_ENV=d1` を試した場合は、`LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh` で本番の形に戻します。
+```powershell [PowerShell]
+git diff --no-index "$env:TEMP/manifest.json.bak" manifest.json && git diff --no-index "$env:TEMP/generated.bak" k8s/generated && node tools/manifest/render.mjs --check
+Remove-Item -Recurse -Force "$env:TEMP/manifest.json.bak", "$env:TEMP/generated.bak"
+```
+
+:::
+
+本格版で `LAB_ENV=d1` を試した場合は、`LAB_ENV=p1 LAB_SKIP_BUILD=1 k8s/up.sh`(PowerShell では `k8s/up.ps1 -Env p1 -SkipBuild`)で本番の形に戻します。

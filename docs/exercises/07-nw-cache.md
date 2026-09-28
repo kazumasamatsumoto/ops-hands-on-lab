@@ -43,40 +43,80 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
 
 1. **同じ画面を 5 回取る**。1 回目と 2 回目以降で `X-Cache-Status` と速さを比べます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in 1 2 3 4 5; do
      curl -s -o /dev/null -w "%{http_code} cache=%header{x-cache-status} ttfb=%{time_starttransfer}s\n" http://www.lab.localhost:18080/p/100005
    done
    ```
 
+   ```powershell [PowerShell]
+   foreach ($i in 1..5) {
+     curl.exe -s -o NUL -w '%{http_code} cache=%header{x-cache-status} ttfb=%{time_starttransfer}s\n' http://www.lab.localhost:18080/p/100005
+   }
+   ```
+
+   :::
+
 2. **奥の storefront に何回届いたかを数える**。10 回取っても、ログに出るのは 1 回だけのはずです。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in $(seq 1 10); do curl -s -o /dev/null http://www.lab.localhost:18080/p/100008; done; sleep 1
    docker compose logs storefront --no-log-prefix --since 15s | grep -c '"url":"/p/100008"'
    ```
 
+   ```powershell [PowerShell]
+   foreach ($i in 1..10) { curl.exe -s -o NUL http://www.lab.localhost:18080/p/100008 }; Start-Sleep 1
+   @(docker compose logs storefront --no-log-prefix --since 15s | Select-String '"url":"/p/100008"').Count
+   ```
+
+   :::
+
 3. **ログインしているかもしれない人はためない**。`Authorization` や `Cookie` を付けると `BYPASS` になります。ためない画面(注文履歴)には、そもそも `X-Cache-Status` が付きません。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w "%{http_code} cache=%header{x-cache-status}\n" -H 'Authorization: Bearer x' http://api.lab.localhost:18080/occ/v2/samplestore/products/100005
    curl -s -o /dev/null -w "%{http_code} cache=%header{x-cache-status}\n" -H 'Cookie: a=b' http://www.lab.localhost:18080/p/100005
    curl -sI http://www.lab.localhost:18080/my-account/orders | grep -ci x-cache-status
    ```
 
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w '%{http_code} cache=%header{x-cache-status}\n' -H 'Authorization: Bearer x' http://api.lab.localhost:18080/occ/v2/samplestore/products/100005
+   curl.exe -s -o NUL -w '%{http_code} cache=%header{x-cache-status}\n' -H 'Cookie: a=b' http://www.lab.localhost:18080/p/100005
+   @(curl.exe -sI http://www.lab.localhost:18080/my-account/orders | Select-String 'x-cache-status').Count
+   ```
+
+   :::
+
 4. **商品画像は 1 日ためる**。api が `Cache-Control: public, max-age=86400` を返すので、nginx はそれに従います。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    curl -s -o /dev/null -w "1回目 cache=%header{x-cache-status} cc=%header{cache-control}\n" http://api.lab.localhost:18080/medias/100005.svg
    curl -s -o /dev/null -w "2回目 cache=%header{x-cache-status}\n" http://api.lab.localhost:18080/medias/100005.svg
    ```
+
+   ```powershell [PowerShell]
+   curl.exe -s -o NUL -w '1回目 cache=%header{x-cache-status} cc=%header{cache-control}\n' http://api.lab.localhost:18080/medias/100005.svg
+   curl.exe -s -o NUL -w '2回目 cache=%header{x-cache-status}\n' http://api.lab.localhost:18080/medias/100005.svg
+   ```
+
+   :::
 
    画像は 1 日ためるので、この 1 日のうちにお店のトップをブラウザで開いた(または [QA-1](./11-qa-e2e-regression) の E2E を流した)あとだと、トップに並ぶ画像はもう作り置きされていて、1 回目から `HIT` になります。そのときは `docker compose down -v` の後で試すか、トップに出ない画像(例: `100029.svg`)で試します。
 
 5. **backoffice で変えた値が、キャッシュが切れるまで出ない様子を見る**。ブラウザで http://backoffice.lab.localhost:18080/backoffice/ を開き、`admin` / `admin` でログインし、「トップページのバナー」の見出しを変えて保存します。
    すぐに次を打つと、30 秒ほどは古い見出し、そのあと新しい見出しになります。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    for i in $(seq 1 9); do
      printf '%s ' "$(date +%T)"
      curl -s -D - http://www.lab.localhost:18080/ -o /tmp/top.html | grep -i x-cache-status | tr -d '\r\n'
@@ -85,9 +125,23 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
    done   # Ctrl+C で止める
    ```
 
+   ```powershell [PowerShell]
+   foreach ($i in 1..9) {
+     $t = Get-Date -Format HH:mm:ss
+     $cache = (curl.exe -s -D - http://www.lab.localhost:18080/ -o "$env:TEMP/top.html" | Select-String 'x-cache-status').Line -replace '[\r\n]', ''
+     $h1 = (Select-String -Path "$env:TEMP/top.html" -Pattern '<h1[^>]*>[^<]*</h1>' | Select-Object -First 1).Matches.Value
+     "$t $cache $h1"
+     Start-Sleep 5
+   }   # Ctrl+C で止める
+   ```
+
+   :::
+
 6. **api が遅いときにキャッシュが効く様子を見る**。api に 0.3 秒の遅延を入れ、キャッシュ OFF と ON で比べます。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set latencyMs=300
 
    EDGE_CACHE=off docker compose up -d cdn-waf; docker compose ps cdn-waf     # (healthy) を待つ
@@ -96,6 +150,22 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
    docker compose up -d cdn-waf; docker compose ps cdn-waf                    # 既定(on)に戻す
    for i in $(seq 1 10); do curl -s -o /dev/null -w "%{time_starttransfer} %header{x-cache-status}\n" http://www.lab.localhost:18080/p/100007; done
    ```
+
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set latencyMs=300
+
+   $env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf; docker compose ps cdn-waf     # (healthy) を待つ
+   foreach ($i in 1..10) { curl.exe -s -o NUL -w '%{time_starttransfer} %header{x-cache-status}\n' http://www.lab.localhost:18080/p/100007 }
+
+   Remove-Item Env:EDGE_CACHE; docker compose up -d cdn-waf; docker compose ps cdn-waf   # 既定(on)に戻す
+   foreach ($i in 1..10) { curl.exe -s -o NUL -w '%{time_starttransfer} %header{x-cache-status}\n' http://www.lab.localhost:18080/p/100007 }
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   `$env:EDGE_CACHE = 'off'` は同じウィンドウで打つ以後のコマンド全部に効き続けます。「既定に戻す」ときは、上のように `Remove-Item Env:EDGE_CACHE` で消してから `docker compose up -d cdn-waf` します。
+   :::
 
 ## 4. 何が見えたら成功か
 
@@ -139,7 +209,7 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
 10:30:34 X-Cache-Status: HIT <h1>冬のノート祭り</h1>
 ```
 
-キャッシュを切った状態(`EDGE_CACHE=off docker compose up -d cdn-waf`)で同じことをすると、保存の直後に変わります。これが d1 環境でキャッシュを切っている理由です。
+キャッシュを切った状態(`EDGE_CACHE=off docker compose up -d cdn-waf`。PowerShell では `$env:EDGE_CACHE = 'off'; docker compose up -d cdn-waf`)で同じことをすると、保存の直後に変わります。これが d1 環境でキャッシュを切っている理由です。
 
 **手順 6**: api が 0.3 秒遅いとき、キャッシュ OFF では毎回 0.66 秒(全部 BYPASS)。ON では最初の 1 回だけ遅く、あとは 0.008〜0.01 秒。
 
@@ -187,11 +257,22 @@ cdn-waf は、CCv2 の案件で別に契約する CDN(例: CloudFront)に当た�
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh reset                                  # latencyMs を 0 に戻す
 docker compose up -d cdn-waf                           # EDGE_CACHE を付けずに起動 = on
 docker compose exec -T cdn-waf printenv EDGE_CACHE     # on ならよい
 rm -f /tmp/top.html
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 reset                                                              # latencyMs を 0 に戻す
+Remove-Item Env:EDGE_CACHE -ErrorAction SilentlyContinue; docker compose up -d cdn-waf   # EDGE_CACHE を消してから起動 = on
+docker compose exec -T cdn-waf printenv EDGE_CACHE                                 # on ならよい
+Remove-Item "$env:TEMP/top.html"
+```
+
+:::
 
 手順 5 で backoffice のバナーを変えた場合は、[ヘッドレス-1](./21-headless-cms) の片付けと同じ要領で元の見出し(「秋の文房具フェア」)に戻すか、`docker compose down -v` でまっさらにできます。

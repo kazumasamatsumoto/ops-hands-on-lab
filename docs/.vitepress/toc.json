@@ -2,7 +2,7 @@
   "guide": [
     ["about", "このラボについて(はじめに)"],
     ["setup", "準備と起動(軽量版・本格版)"],
-    ["windows", "Windows で使う(WSL2)"],
+    ["windows", "Windows で使う(WSL2 / PowerShell 7)"],
     ["sier-mapping", "SIer の言葉との対応表"],
     ["map", "地図: 構成図と設計書の対応"],
     ["checklist", "開発・運用に必要なこと一覧"],

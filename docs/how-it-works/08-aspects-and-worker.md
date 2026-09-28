@@ -167,7 +167,9 @@ Prometheus は worker の指標を `honor_labels: true` で集めます([observa
 
 ## 4. 確かめるコマンド {#s4}
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 # 同じイメージで 3 つの役が動いている
 docker compose ps api backoffice worker
 docker compose exec worker printenv ASPECT          # → backgroundProcessing
@@ -202,22 +204,83 @@ tools/chaos.sh worker set cronFail=true
 tools/chaos.sh worker reset
 ```
 
-::: details 本格版(Kubernetes)では
+```powershell [PowerShell]
+# 同じイメージで 3 つの役が動いている
+docker compose ps api backoffice worker
+docker compose exec worker printenv ASPECT          # → backgroundProcessing
+
+# 起動の順番(api が表を作り、ほかは待つ)をログで見る
+docker compose logs backoffice | Select-String -Pattern 'DB の準備を待って|準備ができました' | Select-Object -First 10
+
+# worker のジョブが 60 秒ごとに成功している
+docker compose logs --tail=10 worker | Select-String ジョブ
+
+# worker の指標(外には出していないので中から見る。コンテナの中の curl なので .exe なし)
+docker compose exec worker curl -s http://127.0.0.1:3001/metrics | Select-String -Pattern '^cronjob_(runs_total|last_success)'
+# → cronjob_runs_total{job="stockImportJob",result="success"} 12
+#   cronjob_runs_total{job="stockImportJob",result="failure"} 0
+#   cronjob_runs_total{job="searchIndexJob",result="success"} 12
+#   cronjob_runs_total{job="searchIndexJob",result="failure"} 0
+#   cronjob_last_success_timestamp_seconds{job="stockImportJob"} 1790000000.123
+#   cronjob_last_success_timestamp_seconds{job="searchIndexJob"} 1790000000.119
+
+# worker には入口(ホスト名)が無い → cdn-waf が「このホスト名は使っていません」の 404
+curl.exe -s -o NUL -w '%{http_code}\n' -H 'Host: worker.lab.localhost' http://www.lab.localhost:18080/
+# → 404
+
+# ジョブを全部失敗させ、間隔を 10 秒に縮める → 1〜2 分で CronJobStaleDemo、5〜6 分で CronJobStale
+$env:CHAOS_CRON_FAIL = 'true'; $env:CRON_INTERVAL_SECONDS = '10'; docker compose up -d worker
+# pager(http://localhost:19094)と Grafana の「worker(定期ジョブ = backgroundProcessing)」の段で様子を見る
+# 片付け(環境変数を消して起動し直すと既定値に戻る)
+Remove-Item Env:CHAOS_CRON_FAIL, Env:CRON_INTERVAL_SECONDS; docker compose up -d worker
+
+# 動かしたまま切り替えるなら
+tools/chaos.ps1 worker set cronFail=true
+tools/chaos.ps1 worker reset
+```
+
+:::
+
+:::: details 本格版(Kubernetes)では
 aspect ごとに Deployment が 1 つずつできます(`api`・`backoffice`・`worker`)。ラベル `lab/aspect` で役が分かります。
-```bash
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 kubectl -n lab get deploy -L lab/aspect
 kubectl -n lab get pods -l lab/aspect=backgroundProcessing
 kubectl -n lab logs deploy/worker --tail=10
 ```
+
+```powershell [PowerShell]
+kubectl -n lab get deploy -L lab/aspect
+kubectl -n lab get pods -l lab/aspect=backgroundProcessing
+kubectl -n lab logs deploy/worker --tail=10
+```
+
+:::
+
 本格版の worker は `SEARCH_PROVIDER=solr` なので、`searchIndexJob` が毎回 Solr の索引を作り直します([仕組み-9](./09-search-solr))。
-カオスの切り替えは `k8s/chaos.sh` です(対象の **全部の Pod** に同じ指示を送ります)。
-```bash
+カオスの切り替えは `k8s/chaos.sh`(PowerShell は `k8s/chaos.ps1`)です(対象の **全部の Pod** に同じ指示を送ります)。
+
+::: code-group
+
+```bash [Mac / Linux / WSL]
 k8s/chaos.sh worker set cronFail=true                             # 動かしたまま切り替える
 k8s/chaos.sh worker boot cronFail=true cronIntervalSeconds=10     # 起動時の値を変える(Pod が作り直される。アラートの演習)
 k8s/chaos.sh worker boot-reset                                    # 元に戻す
 ```
-最初の引数で対象(`api`・`backoffice`・`worker`。省くと `api`)を選び、続けて `status`・`set 名前=値`・`reset`・`boot 名前=値`・`boot-reset` のどれかを書きます。`set` は動いている Pod だけ(作り直すと戻る)、`boot` は Deployment の環境変数を変えるので Pod が作り直されても残ります。
+
+```powershell [PowerShell]
+k8s/chaos.ps1 worker set cronFail=true                            # 動かしたまま切り替える
+k8s/chaos.ps1 worker boot cronFail=true cronIntervalSeconds=10    # 起動時の値を変える(Pod が作り直される。アラートの演習)
+k8s/chaos.ps1 worker boot-reset                                   # 元に戻す
+```
+
 :::
+
+最初の引数で対象(`api`・`backoffice`・`worker`。省くと `api`)を選び、続けて `status`・`set 名前=値`・`reset`・`boot 名前=値`・`boot-reset` のどれかを書きます。`set` は動いている Pod だけ(作り直すと戻る)、`boot` は Deployment の環境変数を変えるので Pod が作り直されても残ります。
+::::
 
 ## 5. CCv2 / Composable Storefront ではどこに当たるか {#s5}
 

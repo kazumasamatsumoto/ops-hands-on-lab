@@ -43,10 +43,19 @@ CCv2 の案件では、指標は Dynatrace(APM)で見ます。このラボの Pr
 
 1. **数え直しやすくするため、api を再起動して数を 0 にする**(数え札は api のメモリの中にあるので、再起動で 0 に戻ります)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    docker compose restart api
    docker compose ps api        # (healthy) を待つ
    ```
+
+   ```powershell [PowerShell]
+   docker compose restart api
+   docker compose ps api        # (healthy) を待つ
+   ```
+
+   :::
 
    直前に別の演習で遅延やエラーを入れていたら(たとえば [ネットワーク-1](./07-nw-cache) の手順 6)、5 分ほど空けてから進めてください(記録ルールは「直近 5 分」を見るためです)。
    空けずに進めると、再起動の前の遅い記録も「直近 5 分」に入り、手順 5 の p95 が 0.4 秒のように大きくずれます。
@@ -54,10 +63,23 @@ CCv2 の案件では、指標は Dynatrace(APM)で見ます。このラボの Pr
 
 2. **api に 2% のエラーを混ぜ、1 分間お客様のまねをする**。cdn-waf のキャッシュに吸収されないよう、ここでは api に直接かけます(`API_URL=http://api:3001`)。
 
-   ```bash
+   ::: code-group
+
+   ```bash [Mac / Linux / WSL]
    tools/chaos.sh set errorRate=0.02
    API_URL=http://api:3001 tools/k6.sh browse.js -e VUS=10 -e DURATION=1m -e PAGES=0
    ```
+
+   ```powershell [PowerShell]
+   tools/chaos.ps1 set errorRate=0.02
+   $env:API_URL = 'http://api:3001'; tools/k6.ps1 browse.js -e VUS=10 -e DURATION=1m -e PAGES=0; Remove-Item Env:API_URL
+   ```
+
+   :::
+
+   ::: tip PowerShell
+   `$env:API_URL = …` は同じウィンドウで打つ以後のコマンド全部に効き続けるので、k6 が終わったら `Remove-Item Env:API_URL` で消しています(消し忘れると、次の演習の k6 も cdn-waf を通らずに api に直接かかります)。
+   :::
 
    k6 の最後に出る `http_req_failed`(失敗の割合)と `p(95)` を控えておきます。
 
@@ -128,7 +150,7 @@ job:slo_error_budget_remaining:ratio30d{job="api"}       -8.37
 **手順 6**: Grafana の上の 4 つの枠の `api` の数字で、「速さは合格、成功率は不合格」とひと目で分かれば成功です。成功率と、エラーバジェットの残りが赤く出ます。
 
 ::: tip storefront にも SLO がある
-同じことは storefront にもできます。`API_URL=http://api:3001 WWW_URL=http://storefront:4000 tools/k6.sh browse.js -e VUS=5 -e DURATION=1m` を、api に 2% のエラーを入れたまま流すと、
+同じことは storefront にもできます。`API_URL=http://api:3001 WWW_URL=http://storefront:4000 tools/k6.sh browse.js -e VUS=5 -e DURATION=1m`(PowerShell では `$env:API_URL = 'http://api:3001'; $env:WWW_URL = 'http://storefront:4000'; tools/k6.ps1 browse.js -e VUS=5 -e DURATION=1m; Remove-Item Env:API_URL, Env:WWW_URL`)を、api に 2% のエラーを入れたまま流すと、
 storefront 自身の成功率は高い(SSR は続けられる)のに、`ssr_api_call` のログに「api への呼び出しが 500 だった」が並びます。api の失敗が、storefront から見た体験にどう出るかが分かります。
 :::
 
@@ -159,8 +181,17 @@ storefront 自身の成功率は高い(SSR は続けられる)のに、`ssr_api_
 
 ## 8. 片付け
 
-```bash
+::: code-group
+
+```bash [Mac / Linux / WSL]
 tools/chaos.sh reset          # errorRate を 0 に戻す
 ```
+
+```powershell [PowerShell]
+tools/chaos.ps1 reset         # errorRate を 0 に戻す
+Remove-Item Env:API_URL, Env:WWW_URL -ErrorAction SilentlyContinue   # 残っていれば消す
+```
+
+:::
 
 アラート(前の手順でエラーを入れたことによる)が鳴っていれば、5 分ほどで自然に解決します。次の [SRE-2](./10-sre-burn-rate-alert) にそのまま進めます。
